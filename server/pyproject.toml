@@ -1,0 +1,19 @@
+[project]
+name = "packingandmoving"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "black>=26.5.1",
+    "fastapi>=0.138.2",
+    "google-cloud-storage>=3.12.0",
+    "google-genai>=1.0.0",
+    "psycopg2-binary>=2.9.12",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.6.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy>=2.0.51",
+    "sqlmodel>=0.0.39",
+    "uvicorn[standard]>=0.49.0",
+]

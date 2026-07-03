@@ -9,6 +9,7 @@ class GeminiItem(BaseModel):
     quantity: Optional[int] = None
     needsToShip: Optional[bool] = None
     confidenceScore: Optional[float] = None
+    sourceImageNumber: Optional[int] = None
 
     estimatedWeightKg: Optional[float] = None
     estimatedHeightCm: Optional[float] = None

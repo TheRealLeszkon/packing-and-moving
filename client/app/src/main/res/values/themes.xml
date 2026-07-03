@@ -1,0 +1,7 @@
+<resources>
+    <!-- Minimal platform theme used only as the pre-Compose launch background. -->
+    <style name="Theme.FieldSurvey" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/surface_light</item>
+        <item name="android:statusBarColor">@color/primary</item>
+    </style>
+</resources>

@@ -14,16 +14,16 @@ class UploadResponse(BaseModel):
 
 class ImageResponse(BaseModel):
     id: UUID
-    gcs_uri: str
+    url: str
     original_filename: str
     mime_type: str
     created_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class InventoryItemResponse(BaseModel):
     id: UUID
+    source_image_id: Optional[UUID]
+    image_url: Optional[str]
     item_name: str
     category: Optional[str]
     quantity: Optional[int]

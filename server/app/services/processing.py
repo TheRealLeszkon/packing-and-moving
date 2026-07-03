@@ -32,9 +32,12 @@ def run_survey_analysis(session_id: UUID) -> None:
 
         try:
             images = db.exec(
-                select(UploadedImage).where(UploadedImage.session_id == session_id)
+                select(UploadedImage)
+                .where(UploadedImage.session_id == session_id)
+                .order_by(UploadedImage.created_at)
             ).all()
 
+            # `images` order defines the 1-based sourceImageNumber Gemini reports back.
             image_data = [
                 (download_image(img.gcs_uri), img.mime_type) for img in images
             ]
@@ -42,8 +45,15 @@ def run_survey_analysis(session_id: UUID) -> None:
             result = analyze_images(image_data)
 
             for gemini_item in result.items:
+                source_image_id = None
+                if gemini_item.sourceImageNumber is not None:
+                    index = gemini_item.sourceImageNumber - 1
+                    if 0 <= index < len(images):
+                        source_image_id = images[index].id
+
                 item = InventoryItem(
                     session_id=session_id,
+                    source_image_id=source_image_id,
                     item_name=gemini_item.itemName,
                     category=gemini_item.category,
                     quantity=gemini_item.quantity,

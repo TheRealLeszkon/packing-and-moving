@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from sqlmodel import Session, select
 
 from app.database.engine import get_session
@@ -16,12 +16,29 @@ from app.schemas.api import (
     UploadResponse,
 )
 from app.services.processing import run_survey_analysis
-from app.services.storage import upload_image
+from app.services.storage import download_image, upload_image
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+
+
+def _image_response(image: UploadedImage) -> ImageResponse:
+    return ImageResponse(
+        id=image.id,
+        url=f"/images/{image.id}",
+        original_filename=image.original_filename,
+        mime_type=image.mime_type,
+        created_at=image.created_at,
+    )
+
+
+def _item_response(item: InventoryItem) -> InventoryItemResponse:
+    return InventoryItemResponse(
+        **item.model_dump(),
+        image_url=f"/images/{item.source_image_id}" if item.source_image_id else None,
+    )
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=202)
@@ -96,12 +113,22 @@ def get_processing(
         status=survey.status,
         created_at=survey.created_at,
         updated_at=survey.updated_at,
-        images=[ImageResponse.model_validate(img) for img in images],
-        items=[InventoryItemResponse.model_validate(item) for item in items],
+        images=[_image_response(img) for img in images],
+        items=[_item_response(item) for item in items],
         needs_more_images=survey.needs_more_images,
         requested_images=survey.requested_images,
         error_message=survey.error_message,
     )
+
+
+@router.get("/images/{image_id}")
+def get_image(image_id: UUID, db: Session = Depends(get_session)) -> Response:
+    image = db.get(UploadedImage, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found.")
+
+    file_bytes = download_image(image.gcs_uri)
+    return Response(content=file_bytes, media_type=image.mime_type)
 
 
 @router.get("/processing", response_model=list[ProcessingSummary])

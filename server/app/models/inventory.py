@@ -14,6 +14,9 @@ class InventoryItem(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     session_id: uuid.UUID = Field(foreign_key="survey_sessions.id")
+    source_image_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="uploaded_images.id"
+    )
 
     item_name: str
     category: Optional[str] = None

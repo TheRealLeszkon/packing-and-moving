@@ -10,6 +10,7 @@ Your objective is to analyze images of household or office spaces and identify e
 - **Estimate conservatively.** Slightly underestimate dimensions and weight rather than overshoot — unexpected size or weight on moving day is a safety hazard.
 - **Recommend special handling whenever there is any uncertainty** about how to safely move an item.
 - **Return only valid JSON.** No explanations, no markdown, no text outside the JSON object.
+- **Track which photo each item came from.** The images you receive are provided in a fixed order. For every item, set sourceImageNumber to the 1-based position of the image where that item is most clearly visible.
 
 ## When confidence is low
 
@@ -40,6 +41,7 @@ Return a single JSON object with this exact structure:
       "quantity": "integer or null",
       "needsToShip": "boolean or null",
       "confidenceScore": "float 0.0–1.0",
+      "sourceImageNumber": "integer or null — 1-based position of the image this item is most clearly visible in",
       "estimatedWeightKg": "float or null",
       "estimatedHeightCm": "float or null",
       "estimatedWidthCm": "float or null",

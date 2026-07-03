@@ -1,19 +1,64 @@
 [project]
 name = "packingandmoving"
 version = "0.1.0"
-description = "Add your description here"
+description = "Production backend for the Packing & Moving Survey Platform"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "black>=26.5.1",
+    # --- Web framework / server ---
     "fastapi>=0.138.2",
-    "google-cloud-storage>=3.12.0",
-    "google-genai>=1.0.0",
-    "psycopg2-binary>=2.9.12",
+    "uvicorn[standard]>=0.49.0",
+    "python-multipart>=0.0.32",       # multipart form parsing for file uploads (Phase 4)
+    # --- Data / persistence ---
+    "sqlalchemy[asyncio]>=2.0.51",    # async ORM (asyncpg driver)
+    "asyncpg>=0.30.0",                # async PostgreSQL driver for the API
+    "alembic>=1.14.0",                # schema migrations
+    # --- Validation / config ---
     "pydantic>=2.13.4",
     "pydantic-settings>=2.6.0",
-    "python-multipart>=0.0.32",
-    "sqlalchemy>=2.0.51",
-    "sqlmodel>=0.0.39",
-    "uvicorn[standard]>=0.49.0",
+    # --- Auth ---
+    "pyjwt>=2.10.0",                  # backend JWT issue/verify (Phase 2)
 ]
+
+[project.optional-dependencies]
+# Installed per-phase to keep the base image lean. Documented here so the intent
+# is explicit; `uv sync --extra <name>` pulls them in.
+workers = [
+    "dramatiq[redis]>=1.17.0",        # Phase 5 background worker
+    "redis>=5.2.0",
+]
+media = [
+    "pillow>=11.0.0",                 # Phase 5 image resize
+    "opencv-python-headless>=4.10.0", # Phase 5 blur detection
+    "imagehash>=4.3.1",               # Phase 5 duplicate detection
+    # ffmpeg is a system binary, invoked via subprocess (not a pip dep)
+]
+cloud = [
+    "google-cloud-storage>=3.12.0",   # Phase 4 GCS
+    "google-genai>=1.0.0",            # Phase 6 Gemini
+    "google-auth>=2.36.0",            # Phase 2 Google ID token verification
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "httpx>=0.28.0",                  # test client + async HTTP
+    "ruff>=0.8.0",
+    "mypy>=1.14.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["pydantic.mypy"]
+strict = true

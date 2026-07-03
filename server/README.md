@@ -1,0 +1,46 @@
+# Packing & Moving — Backend
+
+Production backend for the Packing & Moving Survey Platform. FastAPI (async) +
+SQLAlchemy 2.0 + PostgreSQL, with a Dramatiq/Redis media & AI processing
+pipeline. See [CLAUDE.md](CLAUDE.md) for the full specification.
+
+## Quick start
+
+```bash
+# 1. Start backing services (Postgres + Redis)
+docker compose up -d
+
+# 2. Configure environment
+cp .env.example .env      # then fill in secrets
+
+# 3. Install dependencies
+uv sync
+
+# 4. Apply migrations (Phase 1+)
+uv run alembic upgrade head
+
+# 5. Run the API
+uv run uvicorn app.main:app --reload
+```
+
+Health check: `GET http://localhost:8000/health` · Docs: `/docs` (non-prod).
+
+## Architecture
+
+Clean layering — routes → services → repositories → database. See `app/`:
+
+| Package        | Responsibility                                        |
+| -------------- | ----------------------------------------------------- |
+| `api/`         | Thin HTTP routes; validation + delegation only        |
+| `core/`        | Config, logging, exceptions, response envelopes       |
+| `db/`          | Declarative base, async engine/session                |
+| `models/`      | SQLAlchemy 2.0 ORM models                             |
+| `schemas/`     | Pydantic request/response DTOs                        |
+| `services/`    | Business logic and orchestration                     |
+| `repositories/`| Encapsulated database access                         |
+| `auth/`        | Google token verification + JWT                      |
+| `storage/`     | Google Cloud Storage abstraction                     |
+| `ai/`          | Gemini provider behind a swappable interface         |
+| `processing/`  | Image/video processing primitives                    |
+| `workers/`     | Dramatiq actors and the pipeline                     |
+| `dependencies/`| Shared FastAPI dependencies                          |

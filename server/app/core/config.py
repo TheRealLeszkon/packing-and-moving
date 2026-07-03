@@ -27,6 +27,11 @@ class AuthMode(StrEnum):
     DEV = "dev"        # accept locally-minted dev tokens; never allowed in prod
 
 
+class StorageBackend(StrEnum):
+    GCS = "gcs"        # Google Cloud Storage (production)
+    MEMORY = "memory"  # in-process store for local dev / tests (no external calls)
+
+
 class Settings(BaseSettings):
     """Typed, validated view of the process environment."""
 
@@ -62,6 +67,10 @@ class Settings(BaseSettings):
 
     # ---- Redis ----
     redis_url: str = "redis://localhost:6379/0"
+
+    # ---- Storage ----
+    storage_backend: StorageBackend = StorageBackend.GCS
+    signed_url_ttl_seconds: int = 900  # 15 min
 
     # ---- Google Cloud ----
     gcp_project_id: str

@@ -24,6 +24,7 @@ from app.services.survey_state_machine import (
     SurveyAction,
     resolve_transition,
 )
+from app.services.visibility import can_view_survey
 
 
 class SurveyService:
@@ -51,7 +52,7 @@ class SurveyService:
     async def get_visible(self, user: User, survey_id: uuid.UUID) -> Survey:
         """Load a survey the ``user`` is allowed to see, else 404 (hides existence)."""
         survey = await self._surveys.get(survey_id)
-        if survey is None or not self._can_view(survey, user):
+        if survey is None or not can_view_survey(survey, user):
             raise NotFoundError("Survey not found.")
         return survey
 
@@ -151,15 +152,4 @@ class SurveyService:
                 changed_by=user.id if user is not None else None,
                 reason=reason,
             )
-        )
-
-    @staticmethod
-    def _can_view(survey: Survey, user: User) -> bool:
-        if user.role is UserRole.ADMIN:
-            return True
-        if user.role is UserRole.CUSTOMER:
-            return survey.customer_id == user.id
-        # Surveyor: their assigned surveys, plus open requests they could accept.
-        return survey.surveyor_id == user.id or (
-            survey.status is SurveyStatus.SCHEDULED and survey.surveyor_id is None
         )

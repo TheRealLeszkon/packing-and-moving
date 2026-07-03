@@ -18,11 +18,13 @@ import os
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 
 from fastapi import UploadFile
 
 from app.core.config import settings
 from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError, ValidationError
+from app.db.session import register_after_commit
 from app.media.upload_utils import spool_to_tempfile
 from app.media.validation import validate_image, validate_video
 from app.models.enums import JobStatus, JobType, ProcessingStatus, SurveyStatus
@@ -37,6 +39,7 @@ from app.schemas.pagination import PageParams
 from app.services.visibility import can_view_survey
 from app.storage.base import StoragePort
 from app.storage.keys import original_key
+from app.workers.dispatch import ProcessingDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +53,12 @@ class MediaService:
         media: MediaRepository,
         surveys: SurveyRepository,
         storage: StoragePort,
+        dispatcher: ProcessingDispatcher,
     ) -> None:
         self._media = media
         self._surveys = surveys
         self._storage = storage
+        self._dispatcher = dispatcher
         self._session = media.session
 
     # ---- uploads ----------------------------------------------------------
@@ -226,8 +231,9 @@ class MediaService:
         return media, key
 
     def _enqueue_job(self, media_id: uuid.UUID, job_type: JobType) -> None:
-        # Durable ledger row. The Phase 5 worker dispatches these to the broker;
-        # the unique idempotency key makes re-enqueue safe.
+        # Durable ledger row (committed atomically with the Media row) plus a
+        # post-commit dispatch so the broker only learns about the job once its
+        # data is persisted. The unique idempotency key makes re-enqueue safe.
         self._session.add(
             MediaProcessingJob(
                 media_id=media_id,
@@ -236,6 +242,9 @@ class MediaService:
                 idempotency_key=f"{media_id}:{job_type.value}",
                 scheduled_at=datetime.now(UTC),
             )
+        )
+        register_after_commit(
+            self._session, partial(self._dispatcher.dispatch, media_id, job_type)
         )
 
     async def _visible_media(self, user: User, media_id: uuid.UUID) -> Media:

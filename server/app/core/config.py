@@ -68,6 +68,17 @@ class Settings(BaseSettings):
     # ---- Redis ----
     redis_url: str = "redis://localhost:6379/0"
 
+    # ---- Processing pipeline ----
+    # Whether the API dispatches processing jobs to the broker after commit.
+    # Disable in tests that exercise the API without a running worker/Redis.
+    processing_dispatch_enabled: bool = True
+    image_max_width: int = 1280
+    image_max_height: int = 960
+    video_frame_rate: float = 1.0          # frames per second to extract
+    blur_variance_threshold: float = 100.0  # Laplacian variance below this = blurry
+    dedup_hamming_threshold: int = 5        # perceptual-hash distance <= this = duplicate
+    job_max_attempts: int = 3
+
     # ---- Storage ----
     storage_backend: StorageBackend = StorageBackend.GCS
     signed_url_ttl_seconds: int = 900  # 15 min
@@ -108,20 +119,28 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.app_env is AppEnv.PRODUCTION
 
-    @property
-    def sqlalchemy_url(self) -> URL:
-        """Build the async SQLAlchemy URL (postgresql+asyncpg).
+    def _db_url(self, driver: str) -> URL:
+        """Build a SQLAlchemy URL with the given driver, filling in credentials.
 
         Credentials may live inside ``DB_URL`` already, or be supplied separately
-        via ``DB_USERNAME`` / ``DB_PASSWORD``. The scheme is always normalised to
-        the asyncpg driver used by the API engine.
+        via ``DB_USERNAME`` / ``DB_PASSWORD``.
         """
-        url = make_url(self.db_url).set(drivername="postgresql+asyncpg")
+        url = make_url(self.db_url).set(drivername=driver)
         if url.username is None and self.db_username:
             url = url.set(username=self.db_username)
         if url.password is None and self.db_password:
             url = url.set(password=self.db_password)
         return url
+
+    @property
+    def sqlalchemy_url(self) -> URL:
+        """Async URL (asyncpg) used by the API engine."""
+        return self._db_url("postgresql+asyncpg")
+
+    @property
+    def sync_sqlalchemy_url(self) -> URL:
+        """Sync URL (psycopg2) used by the background worker sessions."""
+        return self._db_url("postgresql+psycopg2")
 
 
 @lru_cache

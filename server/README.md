@@ -21,7 +21,17 @@ uv run alembic upgrade head
 
 # 5. Run the API
 uv run uvicorn app.main:app --reload
+
+# 6. Run the background worker (media/AI processing) — needs Redis + extras
+uv sync --extra workers --extra media --extra cloud
+uv run dramatiq app.workers.actors
 ```
+
+The API records a processing job and dispatches it to Redis on commit; the
+Dramatiq worker consumes it (resize, frame extraction, blur/duplicate filtering)
+and advances the survey to `ready_for_review` when all media is processed. Set
+`PROCESSING_DISPATCH_ENABLED=false` to record jobs without dispatching (e.g. when
+running the API without a worker).
 
 Health check: `GET http://localhost:8000/health` · Docs: `/docs` (non-prod).
 

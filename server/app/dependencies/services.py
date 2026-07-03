@@ -17,6 +17,7 @@ from app.services.media import MediaService
 from app.services.survey import SurveyService
 from app.storage.base import StoragePort
 from app.storage.factory import get_storage
+from app.workers.dispatch import get_dispatcher
 
 
 def get_survey_service(session: SessionDep) -> SurveyService:
@@ -33,6 +34,7 @@ def get_media_service(session: SessionDep, storage: StorageDep) -> MediaService:
         media=MediaRepository(session),
         surveys=SurveyRepository(session),
         storage=storage,
+        dispatcher=get_dispatcher(),
     )
 
 

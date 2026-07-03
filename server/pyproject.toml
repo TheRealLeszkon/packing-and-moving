@@ -27,6 +27,7 @@ dependencies = [
 workers = [
     "dramatiq[redis]>=1.17.0",        # Phase 5 background worker
     "redis>=5.2.0",
+    "psycopg2-binary>=2.9.12",        # sync DB driver for worker sessions
 ]
 media = [
     "pillow>=11.0.0",                 # Phase 5 image resize

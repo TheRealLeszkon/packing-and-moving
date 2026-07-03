@@ -8,7 +8,8 @@ without repeating boilerplate in services.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Callable
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -18,6 +19,16 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Key under ``session.info`` holding callables to run *after* a successful commit
+# (e.g. dispatching a background job only once its rows are durably persisted).
+AFTER_COMMIT_HOOKS = "after_commit_hooks"
+
+
+def register_after_commit(session: AsyncSession, hook: Callable[[], None]) -> None:
+    session.info.setdefault(AFTER_COMMIT_HOOKS, []).append(hook)
 
 engine: AsyncEngine = create_async_engine(
     settings.sqlalchemy_url,
@@ -48,6 +59,16 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+        else:
+            _run_after_commit_hooks(session)
+
+
+def _run_after_commit_hooks(session: AsyncSession) -> None:
+    for hook in session.info.get(AFTER_COMMIT_HOOKS, []):
+        try:
+            hook()
+        except Exception:  # noqa: BLE001 - a dispatch failure must not fail the request
+            logger.exception("after_commit_hook_failed")
 
 
 async def dispose_engine() -> None:

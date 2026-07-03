@@ -33,27 +33,44 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_name(name: str | None, type_: str, parent_names: dict[str, str | None]) -> bool:
+    """Restrict autogenerate to tables this app owns.
+
+    The dev database is shared with unrelated tables (other projects + old POC
+    leftovers). Without this filter, autogenerate would emit ``DROP TABLE`` for
+    every table not in our metadata. We only ever manage our own tables (plus
+    Alembic's own ``alembic_version``).
+    """
+    if type_ == "table":
+        return name in target_metadata.tables
+    return True
+
+
+# Shared configure() options for both offline and online runs.
+_CONFIGURE_OPTS: dict[str, object] = {
+    "target_metadata": target_metadata,
+    "compare_type": True,
+    "compare_server_default": True,
+    "include_name": include_name,
+    # Only reflect our tables, so foreign tables never enter the comparison.
+    "include_schemas": False,
+}
+
+
 def run_migrations_offline() -> None:
     """Emit SQL to stdout without a live connection."""
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
-        target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,
-        compare_server_default=True,
+        **_CONFIGURE_OPTS,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        compare_type=True,
-        compare_server_default=True,
-    )
+    context.configure(connection=connection, **_CONFIGURE_OPTS)
     with context.begin_transaction():
         context.run_migrations()
 

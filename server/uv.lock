@@ -862,6 +862,7 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
+    { name = "google-auth" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
@@ -872,7 +873,6 @@ dependencies = [
 
 [package.optional-dependencies]
 cloud = [
-    { name = "google-auth" },
     { name = "google-cloud-storage" },
     { name = "google-genai" },
 ]
@@ -901,7 +901,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "dramatiq", extras = ["redis"], marker = "extra == 'workers'", specifier = ">=1.17.0" },
     { name = "fastapi", specifier = ">=0.138.2" },
-    { name = "google-auth", marker = "extra == 'cloud'", specifier = ">=2.36.0" },
+    { name = "google-auth", specifier = ">=2.36.0" },
     { name = "google-cloud-storage", marker = "extra == 'cloud'", specifier = ">=3.12.0" },
     { name = "google-genai", marker = "extra == 'cloud'", specifier = ">=1.0.0" },
     { name = "imagehash", marker = "extra == 'media'", specifier = ">=4.3.1" },

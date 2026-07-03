@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL, make_url
 
@@ -20,6 +20,11 @@ class AppEnv(StrEnum):
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
+
+
+class AuthMode(StrEnum):
+    GOOGLE = "google"  # verify real Google ID tokens (requires OAuth setup)
+    DEV = "dev"        # accept locally-minted dev tokens; never allowed in prod
 
 
 class Settings(BaseSettings):
@@ -50,6 +55,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 30
     refresh_token_ttl_days: int = 30
+    # How incoming ID tokens are verified. Defaults to DEV for local work; a
+    # validator forbids DEV in production so it can never ship by accident.
+    auth_mode: AuthMode = AuthMode.DEV
     google_oauth_client_ids: list[str] = Field(default_factory=list)
 
     # ---- Redis ----
@@ -76,6 +84,16 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def _guard_auth_mode(self) -> Settings:
+        """Fail fast if a production deployment tries to use the dev verifier, or
+        enables Google auth without any allowed client IDs."""
+        if self.is_production and self.auth_mode is AuthMode.DEV:
+            raise ValueError("auth_mode=dev is not permitted when APP_ENV=production")
+        if self.auth_mode is AuthMode.GOOGLE and not self.google_oauth_client_ids:
+            raise ValueError("auth_mode=google requires GOOGLE_OAUTH_CLIENT_IDS to be set")
+        return self
 
     @property
     def is_production(self) -> bool:

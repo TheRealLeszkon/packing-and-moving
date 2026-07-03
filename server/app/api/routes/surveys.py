@@ -16,6 +16,7 @@ from app.core.responses import SuccessResponse
 from app.dependencies.auth import CurrentUser, RequireCustomer
 from app.dependencies.services import SurveyServiceDep
 from app.schemas.common import MessageResponse
+from app.schemas.item import SurveyItemListResponse, SurveyItemResponse
 from app.schemas.pagination import Page, PageParams
 from app.schemas.survey import (
     CancelRequest,
@@ -91,6 +92,21 @@ async def survey_status(
             status=survey.status,
             available_actions=[a.value for a in available_actions(survey, user)],
         )
+    )
+
+
+@router.get(
+    "/{survey_id}/items",
+    response_model=SuccessResponse[SurveyItemListResponse],
+    summary="List the survey's inventory items (AI-generated + manual)",
+)
+async def survey_items(
+    survey_id: uuid.UUID, user: CurrentUser, service: SurveyServiceDep
+) -> SuccessResponse[SurveyItemListResponse]:
+    items = await service.list_items(user, survey_id)
+    payload = [SurveyItemResponse.from_item(item) for item in items]
+    return SuccessResponse(
+        data=SurveyItemListResponse(items=payload, count=len(payload))
     )
 
 

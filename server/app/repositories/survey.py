@@ -6,14 +6,31 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.models.enums import SurveyStatus
 from app.models.survey import Survey
+from app.models.survey_item import SurveyItem
 from app.repositories.base import BaseRepository
 
 
 class SurveyRepository(BaseRepository[Survey]):
     model = Survey
+
+    async def list_items(self, survey_id: uuid.UUID) -> Sequence[SurveyItem]:
+        """All inventory items for a survey, with linked media eagerly loaded."""
+        return (
+            (
+                await self.session.execute(
+                    select(SurveyItem)
+                    .where(SurveyItem.survey_id == survey_id)
+                    .options(selectinload(SurveyItem.media))
+                    .order_by(SurveyItem.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     async def list_for_customer(
         self, customer_id: uuid.UUID, *, limit: int, offset: int

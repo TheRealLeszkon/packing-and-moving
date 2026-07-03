@@ -28,10 +28,13 @@ uv run dramatiq app.workers.actors
 ```
 
 The API records a processing job and dispatches it to Redis on commit; the
-Dramatiq worker consumes it (resize, frame extraction, blur/duplicate filtering)
-and advances the survey to `ready_for_review` when all media is processed. Set
-`PROCESSING_DISPATCH_ENABLED=false` to record jobs without dispatching (e.g. when
-running the API without a worker).
+Dramatiq worker consumes it (resize, frame extraction, blur/duplicate filtering).
+When the last media of a survey finishes, the worker queues an **AI analysis**
+run: Gemini analyses the processed images/frames, the detected inventory is saved
+as `survey_items` (linked to their evidencing media), and only then does the
+survey advance to `ready_for_review`. Set `PROCESSING_DISPATCH_ENABLED=false` to
+record jobs without dispatching (e.g. when running the API without a worker), and
+`AI_PROVIDER=stub` to run the pipeline without calling Gemini.
 
 Health check: `GET http://localhost:8000/health` · Docs: `/docs` (non-prod).
 

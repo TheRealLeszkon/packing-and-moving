@@ -58,6 +58,11 @@ extend-exclude = ["migrations/versions"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
 
+[tool.ruff.lint.per-file-ignores]
+# The AI prompt is a verbatim natural-language string; wrapping it to 100 cols
+# would change the text sent to the model.
+"app/ai/prompts.py" = ["E501"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 

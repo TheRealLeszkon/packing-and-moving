@@ -16,6 +16,7 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.models.enums import SurveyStatus, UserRole
 from app.models.survey import Survey
 from app.models.survey_history import SurveyHistory
+from app.models.survey_item import SurveyItem
 from app.models.user import User
 from app.repositories.survey import SurveyRepository
 from app.schemas.pagination import PageParams
@@ -67,6 +68,11 @@ class SurveyService:
         return await self._surveys.list_for_customer(
             user.id, limit=params.limit, offset=params.offset
         )
+
+    async def list_items(self, user: User, survey_id: uuid.UUID) -> Sequence[SurveyItem]:
+        """Inventory items for a survey the caller may view (AI-generated + manual)."""
+        await self.get_visible(user, survey_id)  # 404s if not visible
+        return await self._surveys.list_items(survey_id)
 
     async def list_available(self, params: PageParams) -> tuple[Sequence[Survey], int]:
         return await self._surveys.list_available(limit=params.limit, offset=params.offset)

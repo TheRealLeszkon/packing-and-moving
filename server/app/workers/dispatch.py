@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 class ProcessingDispatcher(Protocol):
     def dispatch(self, media_id: uuid.UUID, job_type: JobType) -> None: ...
 
+    def dispatch_ai(self, survey_id: uuid.UUID) -> None: ...
+
 
 class DramatiqDispatcher:
     """Sends the matching actor message to the broker (Redis)."""
@@ -33,12 +35,20 @@ class DramatiqDispatcher:
         actor = process_video if job_type is JobType.VIDEO_FRAME_EXTRACTION else process_image
         actor.send(str(media_id))
 
+    def dispatch_ai(self, survey_id: uuid.UUID) -> None:
+        from app.workers.actors import analyze_survey
+
+        analyze_survey.send(str(survey_id))
+
 
 class NullDispatcher:
     """No-op dispatcher for environments without a worker (local/tests)."""
 
     def dispatch(self, media_id: uuid.UUID, job_type: JobType) -> None:
         logger.info("dispatch_skipped", extra={"media_id": str(media_id), "job": job_type})
+
+    def dispatch_ai(self, survey_id: uuid.UUID) -> None:
+        logger.info("ai_dispatch_skipped", extra={"survey_id": str(survey_id)})
 
 
 @lru_cache

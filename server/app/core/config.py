@@ -32,6 +32,11 @@ class StorageBackend(StrEnum):
     MEMORY = "memory"  # in-process store for local dev / tests (no external calls)
 
 
+class AIProviderName(StrEnum):
+    GEMINI = "gemini"  # Google Gemini (production)
+    STUB = "stub"      # deterministic canned response for local dev / tests (no API calls)
+
+
 class Settings(BaseSettings):
     """Typed, validated view of the process environment."""
 
@@ -89,8 +94,16 @@ class Settings(BaseSettings):
     google_application_credentials: str | None = None
 
     # ---- AI ----
+    # Which provider analyses processed media. Defaults to Gemini; STUB returns a
+    # deterministic canned result for tests/local runs without an API key.
+    ai_provider: AIProviderName = AIProviderName.GEMINI
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    # Cap the number of images sent to the model in one analysis (cost/latency).
+    ai_max_images: int = 30
+    ai_request_timeout_seconds: int = 120
+    # Retries for *transient* provider errors, applied inside the provider.
+    ai_max_retries: int = 2
 
     # ---- Upload limits ----
     max_image_size_mb: int = 25
@@ -113,6 +126,12 @@ class Settings(BaseSettings):
             raise ValueError("auth_mode=dev is not permitted when APP_ENV=production")
         if self.auth_mode is AuthMode.GOOGLE and not self.google_oauth_client_ids:
             raise ValueError("auth_mode=google requires GOOGLE_OAUTH_CLIENT_IDS to be set")
+        if (
+            self.is_production
+            and self.ai_provider is AIProviderName.GEMINI
+            and not self.gemini_api_key
+        ):
+            raise ValueError("ai_provider=gemini requires GEMINI_API_KEY in production")
         return self
 
     @property

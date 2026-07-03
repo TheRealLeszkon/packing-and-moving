@@ -6,9 +6,10 @@ Pure sync functions the actors call. Each is:
   first clears any frames produced by the previous attempt;
 - **crash-safe** — job bookkeeping (attempts, status, errors) is written in its
   own transaction so it survives a failure that rolls back the work;
-- **self-finalizing** — when a survey's last media finishes, the survey advances
-  PROCESSING -> READY_FOR_REVIEW (a SYSTEM transition). Phase 6 replaces this hook
-  with "enqueue AI analysis" before the survey becomes reviewable.
+- **self-finalizing** — when a survey's last media finishes, AI analysis is
+  queued (an ``ai_analysis_runs`` row + a dispatch); the survey stays in
+  PROCESSING until :func:`run_ai_analysis` completes and advances it to
+  READY_FOR_REVIEW. If there is nothing to analyse, it advances immediately.
 
 Retry/backoff is delegated to Dramatiq; the job ledger records attempts and
 dead-letters once ``job_max_attempts`` is exhausted.
@@ -22,13 +23,20 @@ import os
 import tempfile
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.ai.base import ImageInput
+from app.ai.factory import get_ai_provider
+from app.ai.mapping import build_survey_item
+from app.ai.prompts import ACTIVE_PROMPT_VERSION
 from app.core.config import settings
 from app.db.sync_session import worker_session
+from app.models.ai_analysis_run import AIAnalysisRun
 from app.models.enums import (
+    AIRunStatus,
     JobStatus,
     JobType,
     MediaType,
@@ -39,13 +47,19 @@ from app.models.media import Media
 from app.models.media_processing_job import MediaProcessingJob
 from app.models.survey import Survey
 from app.models.survey_history import SurveyHistory
+from app.models.survey_item import SurveyItem
 from app.processing.blur import is_blurry
 from app.processing.dedup import DuplicateFilter
 from app.processing.frames import extract_frames
 from app.processing.image_ops import resize_to_bounds
 from app.storage.factory import get_storage
 from app.storage.keys import frame_key, processed_key
+from app.workers.dispatch import get_dispatcher
 from app.workers.runtime import run_async
+
+# Media eligible for AI analysis: originals that were resized in place (images) and
+# frames extracted from videos — both carry a processed JPEG in ``processed_url``.
+_ANALYSABLE_MEDIA_TYPES = (MediaType.IMAGE, MediaType.EXTRACTED_FRAME)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +119,7 @@ def run_image_pipeline(media_id: uuid.UUID) -> None:
             raise
         return
 
+    ai_survey_id: uuid.UUID | None = None
     with worker_session() as db:
         media = db.get(Media, media_id)
         if media is not None:
@@ -116,7 +131,9 @@ def run_image_pipeline(media_id: uuid.UUID) -> None:
         if job is not None:
             job.status = JobStatus.SUCCEEDED
             job.finished_at = _now()
-        _maybe_finalize_survey(db, survey_id)
+        ai_survey_id = _finalize_media(db, survey_id)
+    if ai_survey_id is not None:
+        get_dispatcher().dispatch_ai(ai_survey_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -163,6 +180,7 @@ def run_video_pipeline(media_id: uuid.UUID) -> None:
             raise
         return
 
+    ai_survey_id: uuid.UUID | None = None
     with worker_session() as db:
         for kept_frame in kept:
             db.add(
@@ -186,7 +204,9 @@ def run_video_pipeline(media_id: uuid.UUID) -> None:
         if job is not None:
             job.status = JobStatus.SUCCEEDED
             job.finished_at = _now()
-        _maybe_finalize_survey(db, survey_id)
+        ai_survey_id = _finalize_media(db, survey_id)
+    if ai_survey_id is not None:
+        get_dispatcher().dispatch_ai(ai_survey_id)
 
 
 class _KeptFrame:
@@ -253,13 +273,19 @@ def _record_failure(
             job.status = JobStatus.FAILED  # transient; Dramatiq will retry
 
 
-def _maybe_finalize_survey(db: Session, survey_id: uuid.UUID) -> None:
-    """Advance the survey to READY_FOR_REVIEW once no media is still pending."""
+def _finalize_media(db: Session, survey_id: uuid.UUID) -> uuid.UUID | None:
+    """Handle a media job finishing.
+
+    If media is still outstanding, do nothing. Once the last media completes,
+    either queue AI analysis (create a PENDING ``ai_analysis_runs`` row, keep the
+    survey in PROCESSING) and return the survey id to dispatch, or — if there is
+    nothing analysable — advance straight to READY_FOR_REVIEW and return ``None``.
+    """
     survey = db.get(Survey, survey_id)
     if survey is None or survey.status is not SurveyStatus.PROCESSING:
-        return
+        return None
     # Flush pending changes (this media just marked COMPLETED, frames added) so the
-    # count reflects them — the worker session has autoflush disabled.
+    # counts reflect them — the worker session has autoflush disabled.
     db.flush()
     unfinished = db.scalar(
         select(func.count())
@@ -272,15 +298,199 @@ def _maybe_finalize_survey(db: Session, survey_id: uuid.UUID) -> None:
         )
     )
     if unfinished:
-        return
+        return None
+    # Idempotency: never queue a second analysis when one is already pending or done.
+    already_queued = db.scalar(
+        select(func.count())
+        .select_from(AIAnalysisRun)
+        .where(
+            AIAnalysisRun.survey_id == survey_id,
+            AIAnalysisRun.status.in_([AIRunStatus.PENDING, AIRunStatus.SUCCEEDED]),
+        )
+    )
+    if already_queued:
+        return None
+    analysable = _count_analysable_media(db, survey_id)
+    if not analysable:
+        _transition_to_review(db, survey, run_failed=False, reason="No media to analyze")
+        return None
+    db.add(
+        AIAnalysisRun(
+            survey_id=survey_id,
+            provider=settings.ai_provider.value,
+            model=settings.gemini_model,
+            prompt_version=ACTIVE_PROMPT_VERSION,
+            status=AIRunStatus.PENDING,
+            request_media_count=analysable,
+        )
+    )
+    return survey_id
+
+
+# --------------------------------------------------------------------------- #
+# AI analysis pipeline
+# --------------------------------------------------------------------------- #
+def run_ai_analysis(survey_id: uuid.UUID) -> None:
+    """Analyse a survey's processed media and persist the resulting inventory.
+
+    Idempotent and crash-safe: it claims the survey's PENDING analysis run, calls
+    the provider *outside* any DB transaction (slow), then finalises under a row
+    lock — re-checking the survey is still PROCESSING so a duplicate delivery
+    cannot double-persist. On provider failure the run is recorded FAILED and the
+    survey is still unblocked to READY_FOR_REVIEW for manual entry.
+    """
+    # ---- claim the pending run + snapshot the media to analyse ----
+    with worker_session() as db:
+        survey = db.get(Survey, survey_id)
+        if survey is None or survey.status is not SurveyStatus.PROCESSING:
+            return  # already finalised / cancelled (idempotent)
+        run = db.scalar(
+            select(AIAnalysisRun)
+            .where(
+                AIAnalysisRun.survey_id == survey_id,
+                AIAnalysisRun.status == AIRunStatus.PENDING,
+            )
+            .order_by(AIAnalysisRun.created_at.desc())
+        )
+        if run is None:
+            return  # nothing queued
+        run_id = run.id
+        media_refs = [
+            (m.id, m.processed_url)
+            for m in db.scalars(
+                select(Media)
+                .where(
+                    Media.survey_id == survey_id,
+                    Media.processing_status == ProcessingStatus.COMPLETED,
+                    Media.processed_url.is_not(None),
+                    Media.media_type.in_(_ANALYSABLE_MEDIA_TYPES),
+                )
+                .order_by(Media.upload_timestamp, Media.frame_number)
+            )
+        ][: settings.ai_max_images]
+
+    # ---- download bytes + call the provider (no DB transaction held) ----
+    storage = get_storage()
+    images: list[ImageInput] = []
+    media_ids: list[uuid.UUID] = []
+    for media_id, uri in media_refs:
+        try:
+            data = run_async(storage.download(storage.key_from_uri(uri)))
+        except Exception:  # noqa: BLE001 - skip unreadable media, keep the rest
+            logger.warning("ai_media_download_failed", extra={"media_id": str(media_id)})
+            continue
+        images.append(ImageInput(data=data, mime_type="image/jpeg"))
+        media_ids.append(media_id)
+
+    result = None
+    error: str | None = None
+    if not images:
+        error = "No analysable media could be downloaded."
+    else:
+        try:
+            result = get_ai_provider().analyze(images, prompt_version=ACTIVE_PROMPT_VERSION)
+        except Exception as exc:  # noqa: BLE001 - recorded; survey still unblocked
+            error = str(exc)[:2000]
+            logger.exception("ai_analysis_failed", extra={"survey_id": str(survey_id)})
+
+    # ---- persist result + finalise under a row lock ----
+    with worker_session() as db:
+        survey = db.get(Survey, survey_id, with_for_update=True)
+        if survey is None or survey.status is not SurveyStatus.PROCESSING:
+            return  # another worker won the race; discard this result
+        run = db.get(AIAnalysisRun, run_id)
+        if run is None or run.status is not AIRunStatus.PENDING:
+            return
+        run.request_media_count = len(media_ids)
+        if result is not None:
+            _persist_items(db, survey_id, result, media_ids)
+            run.status = AIRunStatus.SUCCEEDED
+            run.model = result.model
+            run.prompt_version = result.prompt_version
+            run.raw_response = result.raw_response
+            run.prompt_tokens = result.usage.prompt_tokens
+            run.completion_tokens = result.usage.completion_tokens
+            run.total_tokens = result.usage.total_tokens
+            run.latency_ms = result.latency_ms
+            _recompute_totals(db, survey)
+            _transition_to_review(db, survey, run_failed=False, reason="AI analysis complete")
+        else:
+            run.status = AIRunStatus.FAILED
+            run.error = error
+            _transition_to_review(
+                db, survey, run_failed=True, reason="AI analysis failed; manual review"
+            )
+
+
+def _count_analysable_media(db: Session, survey_id: uuid.UUID) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(Media)
+        .where(
+            Media.survey_id == survey_id,
+            Media.processing_status == ProcessingStatus.COMPLETED,
+            Media.processed_url.is_not(None),
+            Media.media_type.in_(_ANALYSABLE_MEDIA_TYPES),
+        )
+    ) or 0
+
+
+def _persist_items(
+    db: Session,
+    survey_id: uuid.UUID,
+    result,
+    media_ids: list[uuid.UUID],
+) -> None:
+    """Create a ``SurveyItem`` per detected item, linking each to the media it was
+    seen in (via ``sourceImageIndexes`` → the analysed media order)."""
+    media_by_index = dict(enumerate(media_ids))
+    media_objs = (
+        {m.id: m for m in db.scalars(select(Media).where(Media.id.in_(media_ids)))}
+        if media_ids
+        else {}
+    )
+    for detected in result.analysis.items:
+        item = build_survey_item(survey_id, detected)
+        linked = [
+            media_objs[media_by_index[idx]]
+            for idx in dict.fromkeys(detected.source_image_indexes)  # dedupe, keep order
+            if idx in media_by_index and media_by_index[idx] in media_objs
+        ]
+        item.media = linked
+        db.add(item)
+    db.flush()
+
+
+def _recompute_totals(db: Session, survey: Survey) -> None:
+    """Recompute aggregate volume (m³) and value from all of the survey's items."""
+    db.flush()  # make the just-added items visible to the aggregate query
+    items = list(
+        db.scalars(select(SurveyItem).where(SurveyItem.survey_id == survey.id))
+    )
+    total_value = Decimal("0")
+    total_volume = Decimal("0")  # cubic metres
+    for item in items:
+        qty = item.quantity or 1
+        if item.estimated_value is not None:
+            total_value += item.estimated_value * qty
+        if item.height_cm and item.width_cm and item.depth_cm:
+            volume_m3 = (item.height_cm / 100) * (item.width_cm / 100) * (item.depth_cm / 100)
+            total_volume += volume_m3 * qty
+    survey.total_value_estimate = total_value
+    survey.total_volume_estimate = total_volume
+
+
+def _transition_to_review(
+    db: Session, survey: Survey, *, run_failed: bool, reason: str
+) -> None:
     survey.status = SurveyStatus.READY_FOR_REVIEW
     db.add(
         SurveyHistory(
-            survey_id=survey_id,
+            survey_id=survey.id,
             from_status=SurveyStatus.PROCESSING,
             to_status=SurveyStatus.READY_FOR_REVIEW,
             changed_by=None,
-            reason="Media processing complete",
+            reason=reason,
         )
     )
 

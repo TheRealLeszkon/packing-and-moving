@@ -9,11 +9,15 @@ tables on ``Base.metadata`` for Alembic autogeneration.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 # Explicit naming convention so Alembic generates stable, predictable constraint
 # names across autogenerate runs (critical for reproducible migrations).
@@ -47,6 +51,9 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        onupdate=func.now(),
+        # Python-side onupdate so the value is assigned to the instance during
+        # flush. A server-side onupdate would expire the attribute and force a
+        # lazy refresh — which breaks under the async session (MissingGreenlet).
+        onupdate=_utcnow,
         nullable=False,
     )

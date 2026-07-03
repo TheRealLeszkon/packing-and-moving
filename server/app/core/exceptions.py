@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.responses import error_body
@@ -102,6 +103,18 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "validation_error",
                 "The request failed validation.",
                 {"errors": exc.errors()},
+            ),
+        )
+
+    @app.exception_handler(StaleDataError)
+    async def _handle_stale_data(_: Request, exc: StaleDataError) -> JSONResponse:
+        # Optimistic-lock miss: another writer changed the row concurrently.
+        logger.info("optimistic_lock_conflict")
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=error_body(
+                "conflict",
+                "The resource was modified concurrently. Please retry.",
             ),
         )
 

@@ -1,0 +1,20 @@
+# Keep the build context lean and, crucially, keep secrets OUT of the image.
+# Secrets are provided at runtime (env_file + a mounted key), never baked in.
+.env
+.env.*
+client_secret*.json
+packingandmoving-*.json
+*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
+
+# Python / tooling caches and the local virtualenv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# VCS and tests (not needed at runtime)
+.git/
+.gitignore
+tests/

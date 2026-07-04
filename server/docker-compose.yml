@@ -1,6 +1,23 @@
-# Local development infrastructure: PostgreSQL + Redis.
-# The API and workers run on the host (uv) during development; this file only
-# provides their backing services. Data persists in named volumes.
+# Full local stack: Postgres + Redis + API + background worker, with migrations
+# applied automatically on startup. `docker compose up` boots everything.
+#
+# Secrets come from ./.env (env_file) and a mounted GCS key — neither is baked
+# into the image. Host-specific values (DB/Redis hosts, key path) are overridden
+# per service below so the same .env works on the host and in containers.
+
+# Shared config for the three services that run the app image.
+x-app: &app
+  build: .
+  env_file: .env
+  environment: &app-env
+    # Point at the compose services instead of the .env's localhost values.
+    DB_URL: postgresql://db:5432/${POSTGRES_DB:-kevin}
+    REDIS_URL: redis://redis:6379/0
+    # The GCS key is mounted at this path (see volumes); override the .env value.
+    GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs-key.json
+  volumes:
+    - ./${GCS_KEY_FILE:-packingandmoving-343bc5089528.json}:/run/secrets/gcs-key.json:ro
+
 services:
   db:
     image: postgres:17-alpine
@@ -8,8 +25,10 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-kevin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-admin123}
       POSTGRES_DB: ${POSTGRES_DB:-kevin}
+    # Host port 5433 (5432 is used by a local host Postgres); containers still
+    # reach it as db:5432 over the compose network.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,6 +48,50 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # One-shot: apply Alembic migrations, then exit. API/worker wait for it.
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        ["CMD", "python", "-c",
+         "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    <<: *app
+    command: ["dramatiq", "app.workers.actors"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
 volumes:
   pgdata:

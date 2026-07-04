@@ -13,6 +13,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.packingandmoving.surveyagent.api.NetworkModule
+import com.packingandmoving.surveyagent.auth.toUserRole
+import com.packingandmoving.surveyagent.repository.ApiResult
+import com.packingandmoving.surveyagent.repository.AppRepositories
 import com.packingandmoving.surveyagent.ui.screens.CameraScreen
 import com.packingandmoving.surveyagent.ui.screens.CreateSurveyScreen
 import com.packingandmoving.surveyagent.ui.screens.HomeScreen
@@ -61,9 +64,17 @@ fun SurveyNavHost(
 
         composable<RoleSelect> {
             RoleSelectScreen(
+                // Switch the backend role first (demo self-role switch); only persist the
+                // workspace choice + navigate on success. Returns an error message on failure.
                 onRoleChosen = { role ->
-                    NetworkModule.sessionManager.setRole(role)
-                    navController.navigate(Home) { popUpTo(0) { inclusive = true } }
+                    when (val result = AppRepositories.user.setRole(role.toUserRole())) {
+                        is ApiResult.Success -> {
+                            NetworkModule.sessionManager.setRole(role)
+                            navController.navigate(Home) { popUpTo(0) { inclusive = true } }
+                            null
+                        }
+                        is ApiResult.Failure -> result.error.message
+                    }
                 },
             )
         }

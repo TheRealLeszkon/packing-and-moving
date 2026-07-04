@@ -1,5 +1,6 @@
 package com.packingandmoving.surveyagent.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -76,7 +77,29 @@ fun PhotoReviewScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showAddSheet by remember { mutableStateOf(false) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
+
+    // Guard against losing staged photos on an accidental back-press (item 9).
+    val hasUnsavedPhotos = uiState.photos.isNotEmpty() && uiState.phase == CapturePhase.Editing
+    fun requestBack() = if (hasUnsavedPhotos) { showDiscardConfirm = true } else onBack()
+    BackHandler(enabled = hasUnsavedPhotos) { showDiscardConfirm = true }
+
+    if (showDiscardConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("Discard photos?") },
+            text = { Text("You have ${uiState.photos.size} photo(s) that haven't been uploaded yet.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showDiscardConfirm = false; onBack() }) {
+                    Text("Discard")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDiscardConfirm = false }) { Text("Keep") }
+            },
+        )
+    }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(),
@@ -101,7 +124,7 @@ fun PhotoReviewScreen(
             TopAppBar(
                 title = { Text("Survey Photos") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { requestBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

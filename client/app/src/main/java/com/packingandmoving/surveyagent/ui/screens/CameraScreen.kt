@@ -124,9 +124,10 @@ private fun CameraContent(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    // FIT_CENTER: show the whole frame instead of cropping to fill (fixes "too zoomed in").
+    // FILL_CENTER: fill the whole view edge-to-edge (no letterbox/black bars). The
+    // "too zoomed in" feel is fixed by starting at the widest lens (min zoom) below.
     val previewView = remember {
-        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FIT_CENTER }
+        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
     }
     val imageCapture = remember {
         ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
@@ -140,12 +141,14 @@ private fun CameraContent(
     var captureError by remember { mutableStateOf<String?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var zoomRatio by remember { mutableFloatStateOf(1f) }
+    var minZoom by remember { mutableFloatStateOf(1f) }
     var maxZoom by remember { mutableFloatStateOf(1f) }
+    var zoomInitialized by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var isRecording by remember { mutableStateOf(false) }
 
     fun applyZoom(target: Float) {
-        val clamped = target.coerceIn(1f, maxZoom)
+        val clamped = target.coerceIn(minZoom, maxZoom)
         zoomRatio = clamped
         camera?.cameraControl?.setZoomRatio(clamped)
     }
@@ -157,7 +160,14 @@ private fun CameraContent(
         provider.unbindAll()
         val useCase = if (mode == CameraMode.Photo) imageCapture else videoCapture
         camera = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, useCase)
-        maxZoom = camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
+        val zoomState = camera?.cameraInfo?.zoomState?.value
+        minZoom = zoomState?.minZoomRatio ?: 1f
+        maxZoom = zoomState?.maxZoomRatio ?: 1f
+        // Start at the widest lens (e.g. 0.5×) the first time; keep the user's zoom on rebind.
+        if (!zoomInitialized) {
+            zoomRatio = minZoom
+            zoomInitialized = true
+        }
         applyZoom(zoomRatio)
     }
 
@@ -249,14 +259,14 @@ private fun CameraContent(
                 Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
             }
 
-            if (maxZoom > 1f && !isRecording) {
+            if (maxZoom > minZoom && !isRecording) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
                 ) {
                     OutlinedButton(onClick = { applyZoom(zoomRatio - 0.5f) }) { Text("–", color = Color.White) }
-                    Slider(value = zoomRatio, onValueChange = ::applyZoom, valueRange = 1f..maxZoom, modifier = Modifier.weight(1f))
+                    Slider(value = zoomRatio, onValueChange = ::applyZoom, valueRange = minZoom..maxZoom, modifier = Modifier.weight(1f))
                     OutlinedButton(onClick = { applyZoom(zoomRatio + 0.5f) }) { Text("+", color = Color.White) }
                 }
                 Text("${"%.1f".format(zoomRatio)}×", color = Color.White)

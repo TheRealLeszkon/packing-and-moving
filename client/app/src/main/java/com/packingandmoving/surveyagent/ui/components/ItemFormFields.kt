@@ -32,7 +32,12 @@ import com.packingandmoving.surveyagent.viewmodel.ItemForm
  * manual-create screens so both stay identical. Emits a new [ItemForm] on any change.
  */
 @Composable
-fun ItemFormFields(form: ItemForm, onChange: (ItemForm) -> Unit, modifier: Modifier = Modifier) {
+fun ItemFormFields(
+    form: ItemForm,
+    onChange: (ItemForm) -> Unit,
+    modifier: Modifier = Modifier,
+    showConfidence: Boolean = true,
+) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Spacing.Medium)) {
         OutlinedTextField(
             value = form.itemName,
@@ -117,6 +122,12 @@ fun ItemFormFields(form: ItemForm, onChange: (ItemForm) -> Unit, modifier: Modif
             minLines = 3,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        if (showConfidence) {
+            NumberField("AI confidence (0–1)", form.confidenceScore, KeyboardType.Decimal, Modifier.fillMaxWidth()) {
+                onChange(form.copy(confidenceScore = it))
+            }
+        }
     }
 }
 

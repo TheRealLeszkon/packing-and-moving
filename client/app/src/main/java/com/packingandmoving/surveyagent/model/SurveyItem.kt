@@ -94,6 +94,7 @@ data class SurveyItemUpdate(
     val estimatedValue: String? = null,
     val condition: ItemCondition? = null,
     val remarks: String? = null,
+    val confidenceScore: String? = null,
     val mediaIds: List<String>? = null,
 )
 

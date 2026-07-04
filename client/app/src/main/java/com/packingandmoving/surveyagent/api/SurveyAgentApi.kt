@@ -17,6 +17,8 @@ import com.packingandmoving.surveyagent.model.SurveyItem
 import com.packingandmoving.surveyagent.model.SurveyItemCreate
 import com.packingandmoving.surveyagent.model.SurveyItemList
 import com.packingandmoving.surveyagent.model.SurveyItemUpdate
+import com.packingandmoving.surveyagent.model.ReanalyzeRequest
+import com.packingandmoving.surveyagent.model.ReanalyzeResult
 import com.packingandmoving.surveyagent.model.SurveyStatusInfo
 import com.packingandmoving.surveyagent.model.SurveySummary
 import com.packingandmoving.surveyagent.model.TokenResponse
@@ -94,6 +96,12 @@ interface SurveyAgentApi {
 
     @POST("surveys/{survey_id}/submit")
     suspend fun submitSurvey(@Path("survey_id") surveyId: String): ApiEnvelope<Survey>
+
+    @POST("surveys/{survey_id}/reanalyze")
+    suspend fun reanalyze(
+        @Path("survey_id") surveyId: String,
+        @Body body: ReanalyzeRequest,
+    ): ApiEnvelope<ReanalyzeResult>
 
     @POST("surveys/{survey_id}/approve")
     suspend fun approveSurvey(@Path("survey_id") surveyId: String): ApiEnvelope<Survey>

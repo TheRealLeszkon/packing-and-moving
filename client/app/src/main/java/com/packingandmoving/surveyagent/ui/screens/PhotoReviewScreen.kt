@@ -39,9 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,8 +55,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.packingandmoving.surveyagent.viewmodel.CapturePhase
 import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
+import com.packingandmoving.surveyagent.ui.components.processingStageLabel
 import com.packingandmoving.surveyagent.ui.theme.Spacing
-import kotlinx.coroutines.delay
 
 /**
  * Photo review hub (new). Shows every staged photo (camera + gallery), lets the user remove
@@ -137,6 +135,7 @@ fun PhotoReviewScreen(
                 phase = uiState.phase,
                 photoCount = uiState.media.size,
                 roomLocation = uiState.roomLocation,
+                processingStage = uiState.processingStage,
                 errorMessage = uiState.errorMessage,
                 enabled = uiState.phase == CapturePhase.Editing,
                 onRoomChange = viewModel::onRoomLocationChange,
@@ -260,6 +259,7 @@ private fun BottomActions(
     phase: CapturePhase,
     photoCount: Int,
     roomLocation: String,
+    processingStage: String?,
     errorMessage: String?,
     enabled: Boolean,
     onRoomChange: (String) -> Unit,
@@ -294,7 +294,7 @@ private fun BottomActions(
                         }
                     }
                 }
-                CapturePhase.Working -> ProcessingIndicator()
+                CapturePhase.Working -> ProcessingIndicator(processingStage)
                 CapturePhase.Ready -> Button(onClick = onViewResults, modifier = Modifier.fillMaxWidth()) {
                     Text("View Survey Results")
                 }
@@ -303,27 +303,11 @@ private fun BottomActions(
     }
 }
 
-/** Inline processing indicator with cycling status copy (item 4/5). */
+/** Inline processing indicator showing the real backend stage. */
 @Composable
-private fun ProcessingIndicator() {
-    val messages = remember {
-        listOf(
-            "Analyzing your inventory…",
-            "Detecting objects…",
-            "Estimating dimensions…",
-            "Matching furniture…",
-            "Calculating confidence…",
-        )
-    }
-    var index by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1800)
-            index = (index + 1) % messages.size
-        }
-    }
+private fun ProcessingIndicator(stage: String?) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.Medium)) {
         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-        Text(messages[index], style = MaterialTheme.typography.bodyLarge)
+        Text(processingStageLabel(stage), style = MaterialTheme.typography.bodyLarge)
     }
 }

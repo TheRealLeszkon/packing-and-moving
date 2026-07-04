@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.packingandmoving.surveyagent.ui.components.StatusBadge
+import com.packingandmoving.surveyagent.ui.components.processingStageLabel
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
 import com.packingandmoving.surveyagent.viewmodel.ProcessingViewModel
@@ -62,7 +63,7 @@ fun ProcessingScreen(
             CircularProgressIndicator()
             Spacer(Modifier.height(Spacing.Large))
             Text(
-                text = "Analyzing your photos…",
+                text = processingStageLabel(uiState.processingStage),
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
             )

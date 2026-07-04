@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -53,6 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.packingandmoving.surveyagent.model.SurveyItem
 import com.packingandmoving.surveyagent.model.SurveySummary
 import com.packingandmoving.surveyagent.ui.components.AppCard
+import com.packingandmoving.surveyagent.ui.components.processingStageLabel
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
 import com.packingandmoving.surveyagent.viewmodel.SurveyResultsViewModel
@@ -77,11 +79,19 @@ fun SurveyResultsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var showReanalyzeDialog by remember { mutableStateOf(false) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load(surveyId) }
     LaunchedEffect(uiState.isSubmitted) { if (uiState.isSubmitted) onSubmitted() }
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { snackbar.showSnackbar(it); viewModel.consumeError() }
+    }
+
+    if (showReanalyzeDialog) {
+        ReanalyzeDialog(
+            onChoose = { mode -> showReanalyzeDialog = false; viewModel.reanalyze(surveyId, mode) },
+            onDismiss = { showReanalyzeDialog = false },
+        )
     }
 
     pendingDeleteId?.let { id ->
@@ -106,6 +116,13 @@ fun SurveyResultsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    if (uiState.canReanalyze) {
+                        IconButton(onClick = { showReanalyzeDialog = true }, enabled = !uiState.isReanalyzing) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Re-run AI")
+                        }
+                    }
+                },
             )
         },
         floatingActionButton = {
@@ -127,6 +144,19 @@ fun SurveyResultsScreen(
             }
         },
     ) { innerPadding ->
+        if (uiState.isReanalyzing) {
+            Column(
+                Modifier.fillMaxSize().padding(innerPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(Spacing.Medium))
+                Text(processingStageLabel(uiState.processingStage), style = MaterialTheme.typography.bodyLarge)
+            }
+            return@Scaffold
+        }
+
         if (uiState.isLoading && uiState.items.isEmpty() && uiState.summary == null) {
             Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -182,6 +212,18 @@ fun SurveyResultsScreen(
             item { Spacer(Modifier.height(Spacing.ExtraLarge)) }
         }
     }
+}
+
+/** Lets the surveyor re-run AI over all photos or only newly-added ones. */
+@Composable
+private fun ReanalyzeDialog(onChoose: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Re-run AI analysis") },
+        text = { Text("Analyze all photos again, or only photos added since the last run?") },
+        confirmButton = { TextButton(onClick = { onChoose("all") }) { Text("All photos") } },
+        dismissButton = { TextButton(onClick = { onChoose("new_only") }) { Text("New photos only") } },
+    )
 }
 
 @Composable

@@ -22,7 +22,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -40,11 +44,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.packingandmoving.surveyagent.ui.components.ItemFormFields
+import com.packingandmoving.surveyagent.ui.components.StagedMediaRow
 import com.packingandmoving.surveyagent.ui.theme.Dimens
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
@@ -65,7 +71,12 @@ fun ItemDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(),
+    ) { uris -> if (uris.isNotEmpty()) viewModel.addMedia(uris, context.contentResolver) }
 
     LaunchedEffect(surveyId, itemId) { viewModel.load(surveyId, itemId) }
     LaunchedEffect(uiState.isDeleted) { if (uiState.isDeleted) onBack() }
@@ -114,7 +125,7 @@ fun ItemDetailScreen(
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
                 Button(
-                    onClick = { viewModel.save(itemId) },
+                    onClick = { viewModel.save(surveyId, itemId, context.contentResolver) },
                     enabled = uiState.item != null && !uiState.isSaving && !uiState.isDeleting,
                     modifier = Modifier.fillMaxWidth().padding(Spacing.Medium),
                 ) {
@@ -152,6 +163,18 @@ fun ItemDetailScreen(
             ) {
                 Spacer(Modifier.height(Spacing.Small))
                 Gallery(uiState.imageUrls)
+                if (uiState.stagedMedia.isNotEmpty()) {
+                    Text("To be uploaded", style = MaterialTheme.typography.titleSmall)
+                    StagedMediaRow(uiState.stagedMedia, onRemove = viewModel::removeMedia)
+                }
+                OutlinedButton(
+                    onClick = {
+                        galleryLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Add photos / videos") }
                 ItemFormFields(form = uiState.form, onChange = viewModel::onFormChange)
                 Spacer(Modifier.height(Spacing.Large))
             }

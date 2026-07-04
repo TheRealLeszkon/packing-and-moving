@@ -31,6 +31,7 @@ data class CaptureUiState(
     val roomLocation: String = "",
     val phase: CapturePhase = CapturePhase.Editing,
     val processingStatus: SurveyStatus? = null,
+    val processingStage: String? = null,
     val errorMessage: String? = null,
 ) {
     val photoCount: Int get() = media.count { !it.isVideo }
@@ -115,7 +116,7 @@ class CaptureViewModel(
             when (val result = surveyRepository.surveyStatus(surveyId)) {
                 is ApiResult.Success -> {
                     val status = result.data.status
-                    _uiState.update { it.copy(processingStatus = status) }
+                    _uiState.update { it.copy(processingStatus = status, processingStage = result.data.processingStage) }
                     if (status != SurveyStatus.PROCESSING) {
                         _uiState.update { it.copy(phase = CapturePhase.Ready) }
                         return

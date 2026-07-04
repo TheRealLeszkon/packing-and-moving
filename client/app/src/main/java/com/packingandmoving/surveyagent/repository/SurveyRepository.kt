@@ -4,6 +4,8 @@ import com.packingandmoving.surveyagent.api.SurveyAgentApi
 import com.packingandmoving.surveyagent.model.CancelRequest
 import com.packingandmoving.surveyagent.model.MessageResponse
 import com.packingandmoving.surveyagent.model.Page
+import com.packingandmoving.surveyagent.model.ReanalyzeRequest
+import com.packingandmoving.surveyagent.model.ReanalyzeResult
 import com.packingandmoving.surveyagent.model.RejectRequest
 import com.packingandmoving.surveyagent.model.Survey
 import com.packingandmoving.surveyagent.model.SurveyCreate
@@ -41,6 +43,9 @@ class SurveyRepository(private val api: SurveyAgentApi) {
     suspend fun complete(surveyId: String): ApiResult<Survey> = safeApiCall { api.completeSurvey(surveyId) }
 
     suspend fun submit(surveyId: String): ApiResult<Survey> = safeApiCall { api.submitSurvey(surveyId) }
+
+    suspend fun reanalyze(surveyId: String, mode: String): ApiResult<ReanalyzeResult> =
+        safeApiCall { api.reanalyze(surveyId, ReanalyzeRequest(mode)) }
 
     suspend fun approve(surveyId: String): ApiResult<Survey> = safeApiCall { api.approveSurvey(surveyId) }
 

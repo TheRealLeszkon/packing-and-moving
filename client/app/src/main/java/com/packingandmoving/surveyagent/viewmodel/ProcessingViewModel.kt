@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 data class ProcessingUiState(
     val status: SurveyStatus? = null,
+    val processingStage: String? = null,
     val isReadyForReview: Boolean = false,
     val errorMessage: String? = null,
 )
@@ -39,7 +40,7 @@ class ProcessingViewModel(private val surveyRepository: SurveyRepository) : View
                 when (val result = surveyRepository.surveyStatus(surveyId)) {
                     is ApiResult.Success -> {
                         val status = result.data.status
-                        _uiState.update { it.copy(status = status, errorMessage = null) }
+                        _uiState.update { it.copy(status = status, processingStage = result.data.processingStage, errorMessage = null) }
                         if (status != SurveyStatus.PROCESSING) {
                             _uiState.update {
                                 it.copy(isReadyForReview = status == SurveyStatus.READY_FOR_REVIEW)

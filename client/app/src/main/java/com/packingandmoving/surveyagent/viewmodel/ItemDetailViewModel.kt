@@ -1,11 +1,16 @@
 package com.packingandmoving.surveyagent.viewmodel
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.packingandmoving.surveyagent.camera.isVideo
+import com.packingandmoving.surveyagent.camera.uploadMediaAndCollectIds
 import com.packingandmoving.surveyagent.model.SurveyItem
 import com.packingandmoving.surveyagent.repository.ApiResult
 import com.packingandmoving.surveyagent.repository.ItemRepository
 import com.packingandmoving.surveyagent.repository.MediaRepository
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +27,7 @@ data class ItemDetailUiState(
     val item: SurveyItem? = null,
     val form: ItemForm = ItemForm(),
     val imageUrls: List<String> = emptyList(),
+    val stagedMedia: List<StagedMedia> = emptyList(),
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val isDeleting: Boolean = false,
@@ -63,14 +69,65 @@ class ItemDetailViewModel(
 
     fun onFormChange(form: ItemForm) = _uiState.update { it.copy(form = form, isSaved = false) }
 
-    fun save(itemId: String) {
+    /** Stage picked gallery items for upload on the next save. */
+    fun addMedia(uris: List<Uri>, resolver: ContentResolver) = _uiState.update { state ->
+        state.copy(
+            stagedMedia = state.stagedMedia +
+                uris.map { StagedMedia(UUID.randomUUID().toString(), it, it.isVideo(resolver)) },
+            isSaved = false,
+        )
+    }
+
+    fun removeMedia(id: String) = _uiState.update { state ->
+        state.copy(stagedMedia = state.stagedMedia.filterNot { it.id == id })
+    }
+
+    fun save(surveyId: String, itemId: String, resolver: ContentResolver) {
+        val form = _uiState.value.form
+        val confidence = form.confidenceScore.trim().toDoubleOrNull()
+        if (form.confidenceScore.isNotBlank() && (confidence == null || confidence !in 0.0..1.0)) {
+            _uiState.update { it.copy(errorMessage = "AI confidence must be a number between 0 and 1.") }
+            return
+        }
+
         _uiState.update { it.copy(isSaving = true, isSaved = false, errorMessage = null) }
         viewModelScope.launch {
-            when (val result = itemRepository.updateItem(itemId, _uiState.value.form.toUpdate())) {
-                is ApiResult.Success ->
-                    _uiState.update {
-                        it.copy(isSaving = false, isSaved = true, item = result.data, form = result.data.toForm())
+            // Upload any staged media first, then attach its ids alongside the existing ones.
+            val staged = _uiState.value.stagedMedia
+            val existingIds = _uiState.value.item?.mediaIds ?: emptyList()
+            val newIds: List<String>
+            if (staged.isNotEmpty()) {
+                val upload = uploadMediaAndCollectIds(
+                    mediaRepository, surveyId,
+                    photos = staged.filterNot { it.isVideo }.map { it.uri },
+                    videos = staged.filter { it.isVideo }.map { it.uri },
+                    resolver = resolver,
+                    roomLocation = _uiState.value.form.roomLocation.trim().ifBlank { null },
+                )
+                when (upload) {
+                    is ApiResult.Success -> newIds = upload.data
+                    is ApiResult.Failure -> {
+                        _uiState.update { it.copy(isSaving = false, errorMessage = upload.error.message) }
+                        return@launch
                     }
+                }
+            } else {
+                newIds = emptyList()
+            }
+
+            val update = form.toUpdate().copy(
+                mediaIds = if (newIds.isEmpty()) null else existingIds + newIds,
+            )
+            when (val result = itemRepository.updateItem(itemId, update)) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false, isSaved = true, item = result.data,
+                            form = result.data.toForm(), stagedMedia = emptyList(),
+                        )
+                    }
+                    loadImages(result.data.mediaIds)
+                }
                 is ApiResult.Failure ->
                     _uiState.update { it.copy(isSaving = false, errorMessage = result.error.message) }
             }

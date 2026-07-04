@@ -3,11 +3,13 @@ package com.packingandmoving.surveyagent.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.packingandmoving.surveyagent.model.SurveyItem
+import com.packingandmoving.surveyagent.model.SurveyStatus
 import com.packingandmoving.surveyagent.model.SurveySummary
 import com.packingandmoving.surveyagent.repository.ApiResult
 import com.packingandmoving.surveyagent.repository.ItemRepository
 import com.packingandmoving.surveyagent.repository.SurveyRepository
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,11 +21,18 @@ data class SurveyResultsUiState(
     val summary: SurveySummary? = null,
     val items: List<SurveyItem> = emptyList(),
     val query: String = "",
+    val status: SurveyStatus? = null,
     val availableActions: List<String> = emptyList(),
     val isSubmitting: Boolean = false,
     val isSubmitted: Boolean = false,
+    val isReanalyzing: Boolean = false,
+    val processingStage: String? = null,
     val errorMessage: String? = null,
 ) {
+    /** Re-run AI is offered while the survey is in a reviewable state. */
+    val canReanalyze: Boolean
+        get() = status == SurveyStatus.READY_FOR_REVIEW || status == SurveyStatus.REVISION_REQUIRED
+
     val visibleItems: List<SurveyItem>
         get() = if (query.isBlank()) items else items.filter { item ->
             item.itemName.contains(query, ignoreCase = true) ||
@@ -61,6 +70,7 @@ class SurveyResultsViewModel(
                     isLoading = false,
                     summary = (summary as? ApiResult.Success)?.data ?: state.summary,
                     items = (items as? ApiResult.Success)?.data?.items ?: state.items,
+                    status = (status as? ApiResult.Success)?.data?.status ?: state.status,
                     availableActions = (status as? ApiResult.Success)?.data?.availableActions
                         ?: state.availableActions,
                     errorMessage = listOf(summary, items, status)
@@ -96,5 +106,44 @@ class SurveyResultsViewModel(
         }
     }
 
+    /** Re-run AI over all photos or only newly-added ones, then poll until it finishes and reload. */
+    fun reanalyze(surveyId: String, mode: String) {
+        if (_uiState.value.isReanalyzing) return
+        _uiState.update { it.copy(isReanalyzing = true, processingStage = null, errorMessage = null) }
+        viewModelScope.launch {
+            when (val result = surveyRepository.reanalyze(surveyId, mode)) {
+                is ApiResult.Failure -> _uiState.update {
+                    it.copy(isReanalyzing = false, errorMessage = result.error.message)
+                }
+                is ApiResult.Success -> pollUntilReanalyzed(surveyId)
+            }
+        }
+    }
+
+    private suspend fun pollUntilReanalyzed(surveyId: String) {
+        while (true) {
+            when (val result = surveyRepository.surveyStatus(surveyId)) {
+                is ApiResult.Success -> {
+                    val status = result.data.status
+                    _uiState.update { it.copy(processingStage = result.data.processingStage) }
+                    if (status != SurveyStatus.PROCESSING) {
+                        _uiState.update { it.copy(isReanalyzing = false, processingStage = null) }
+                        load(surveyId)
+                        return
+                    }
+                }
+                is ApiResult.Failure -> {
+                    _uiState.update { it.copy(isReanalyzing = false, errorMessage = result.error.message) }
+                    return
+                }
+            }
+            delay(POLL_INTERVAL_MS)
+        }
+    }
+
     fun consumeError() = _uiState.update { it.copy(errorMessage = null) }
+
+    private companion object {
+        const val POLL_INTERVAL_MS = 3_000L
+    }
 }

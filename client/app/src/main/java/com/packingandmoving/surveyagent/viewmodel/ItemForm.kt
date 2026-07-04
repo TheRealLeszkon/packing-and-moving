@@ -9,8 +9,8 @@ import com.packingandmoving.surveyagent.model.SurveyItemUpdate
 /**
  * All user-editable inventory fields as one immutable form value, shared by the edit
  * (ItemDetail) and manual-create screens. Numeric fields are edited as text to preserve
- * Decimal precision; blanks map to null on the wire. `confidence_score` is intentionally
- * absent — it is AI-owned and not part of the backend's update schema.
+ * Decimal precision; blanks map to null on the wire. `confidenceScore` (0–1) is editable
+ * on update only — the create schema does not accept it (it's AI-owned at creation).
  */
 data class ItemForm(
     val itemName: String = "",
@@ -31,6 +31,7 @@ data class ItemForm(
     val needsSpecialHandling: Boolean = false,
     val needsToShip: Boolean = true,
     val remarks: String = "",
+    val confidenceScore: String = "",
 ) {
     val isValidForCreate: Boolean get() = itemName.isNotBlank()
 }
@@ -54,6 +55,7 @@ fun SurveyItem.toForm(): ItemForm = ItemForm(
     needsSpecialHandling = needsSpecialHandling,
     needsToShip = needsToShip,
     remarks = remarks.orEmpty(),
+    confidenceScore = confidenceScore.orEmpty(),
 )
 
 /** Edit: every field is sent; nulls are omitted by the JSON config, so blanks clear fields. */
@@ -76,10 +78,11 @@ fun ItemForm.toUpdate(): SurveyItemUpdate = SurveyItemUpdate(
     needsSpecialHandling = needsSpecialHandling,
     needsToShip = needsToShip,
     remarks = remarks.blankToNull(),
+    confidenceScore = confidenceScore.blankToNull(),
 )
 
 /** Manual create: name is required; unset optionals are omitted so backend defaults apply. */
-fun ItemForm.toCreate(): SurveyItemCreate = SurveyItemCreate(
+fun ItemForm.toCreate(mediaIds: List<String>? = null): SurveyItemCreate = SurveyItemCreate(
     itemName = itemName.trim(),
     category = category.blankToNull(),
     quantity = quantity.trim().toIntOrNull() ?: 1,
@@ -98,6 +101,7 @@ fun ItemForm.toCreate(): SurveyItemCreate = SurveyItemCreate(
     needsSpecialHandling = needsSpecialHandling,
     needsToShip = needsToShip,
     remarks = remarks.blankToNull(),
+    mediaIds = mediaIds,
 )
 
 private fun String.blankToNull(): String? = trim().ifBlank { null }

@@ -5,6 +5,9 @@
 *-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
 # Catch-all for any service account key dropped in the repo
 packingandmoving-*.json
+# Google OAuth client secret files downloaded from the Cloud console
+client_secret_*.json
+client_secret*.apps.googleusercontent.com.json
 
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/

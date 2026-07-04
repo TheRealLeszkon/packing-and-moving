@@ -16,6 +16,9 @@ import os
 
 os.environ.setdefault("STORAGE_BACKEND", "memory")
 os.environ.setdefault("AI_PROVIDER", "stub")
+# Tests exercise the flow with locally-minted dev ID tokens, so force the dev
+# verifier regardless of the developer's .env (which may enable Google auth).
+os.environ.setdefault("AUTH_MODE", "dev")
 os.environ.setdefault("PROCESSING_DISPATCH_ENABLED", "false")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # Each test runs on its own event loop; a pooled asyncpg connection can't cross

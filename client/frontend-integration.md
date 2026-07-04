@@ -49,7 +49,12 @@ The backend is complete (8 phases). Treat the API as the source of truth.
 3. Use `access_token` (JWT) as bearer. **Access TTL = 30 min**, **refresh TTL = 30 days**.
 4. `POST /auth/refresh` `{ "refresh_token": "..." }` → new token pair. **Refresh tokens rotate & are single-use** — always store the newly returned one; a reused/old refresh token is rejected.
 5. `POST /auth/logout` `{ "refresh_token": "..." }` revokes it. `GET /auth/me` → current user.
-- **Dev/local mode:** backend currently runs `AUTH_MODE=dev` (real Google OAuth console setup deferred). In dev it accepts a locally-minted token, so the app can be developed without Google wiring. The client flow is identical; only the token source differs. Flag needed from backend when real OAuth is enabled: the **allowed Google OAuth client IDs / Android client ID**.
+- **Real Google OAuth is now enabled** (`AUTH_MODE=google`). The backend verifies real Google ID tokens (signature, issuer, expiry) and only accepts tokens whose audience is one of the configured client IDs.
+  - **Android (mobile) client ID** — use this as the server-client-id / requested ID-token audience in Google Sign-In:
+    `39935125036-6mq6k9mk7s69ii8mu75ignsu03doldr0.apps.googleusercontent.com`
+  - The backend also accepts the **web** client ID audience (`39935125036-v31f3po8a41i2s78ce47cmkg0qkp41v6.apps.googleusercontent.com`).
+  - The account's `email_verified` must be true. On first sign-in a user is created with role `customer`.
+  - **Dev fallback:** setting `AUTH_MODE=dev` on the backend accepts locally-minted tokens for development without Google — the client flow is identical, only the token source differs.
 
 ## 4. Roles
 `customer`, `surveyor`, `admin`. A user has exactly one role (defaults to `customer` on first sign-in; surveyor/admin are assigned server-side). Branch UI on `user.role`.
@@ -123,7 +128,7 @@ Signed URLs expire (**~15 min**, `SIGNED_URL_TTL_SECONDS=900`). Don't cache them
 ## 12. What's NOT built yet (plan around these)
 - **No push notifications / websockets / SSE** → client must poll for `processing → ready_for_review` and for customer-approval state changes.
 - **No survey-history endpoint** exposed (audit rows exist server-side, not surfaced).
-- **Real Google OAuth not wired** (dev auth mode now) — needs the Android OAuth client ID before production.
+- ~~Real Google OAuth not wired~~ — **now enabled** (`AUTH_MODE=google`); Android/web client IDs configured (see §3).
 - **No CORS** (only matters for a web client).
 - Rate limits are per-instance in-memory (fine for one API instance).
 

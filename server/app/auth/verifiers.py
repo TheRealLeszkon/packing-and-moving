@@ -116,5 +116,5 @@ def mint_dev_id_token(
 def build_token_verifier(settings: Settings) -> TokenVerifier:
     """Select the verifier implementation from configuration."""
     if settings.auth_mode is AuthMode.GOOGLE:
-        return GoogleTokenVerifier(settings.google_oauth_client_ids)
+        return GoogleTokenVerifier(settings.allowed_google_client_ids)
     return DevTokenVerifier(settings.jwt_secret, settings.jwt_algorithm)

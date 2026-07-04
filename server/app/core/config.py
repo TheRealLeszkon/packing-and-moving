@@ -72,7 +72,16 @@ class Settings(BaseSettings):
     # How incoming ID tokens are verified. Defaults to DEV for local work; a
     # validator forbids DEV in production so it can never ship by accident.
     auth_mode: AuthMode = AuthMode.DEV
+    # Google OAuth client IDs allowed to issue ID tokens. Provide any of:
+    #   - GOOGLE_OAUTH_CLIENT_IDS (comma-separated), and/or
+    #   - MOBILE_CLIENT_ID / WEB_CLIENT_ID (the individual client IDs created in
+    #     the Google Cloud console). All are merged into the accepted audiences.
     google_oauth_client_ids: list[str] = Field(default_factory=list)
+    mobile_client_id: str | None = None
+    web_client_id: str | None = None
+    # OAuth client secret for the web client. Only needed for the authorization-
+    # code exchange (server-side sign-in); ID-token verification does not use it.
+    web_client_secret: str | None = None
 
     # ---- Redis ----
     redis_url: str = "redis://localhost:6379/0"
@@ -133,14 +142,31 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @property
+    def allowed_google_client_ids(self) -> list[str]:
+        """Every Google OAuth client ID accepted as a token audience.
+
+        Merges the comma-separated ``GOOGLE_OAUTH_CLIENT_IDS`` with the individual
+        ``MOBILE_CLIENT_ID`` / ``WEB_CLIENT_ID`` values, de-duplicated and order-
+        preserving so config can be expressed either way.
+        """
+        merged = [
+            *self.google_oauth_client_ids,
+            *(cid for cid in (self.mobile_client_id, self.web_client_id) if cid),
+        ]
+        return list(dict.fromkeys(merged))
+
     @model_validator(mode="after")
     def _guard_auth_mode(self) -> Settings:
         """Fail fast if a production deployment tries to use the dev verifier, or
         enables Google auth without any allowed client IDs."""
         if self.is_production and self.auth_mode is AuthMode.DEV:
             raise ValueError("auth_mode=dev is not permitted when APP_ENV=production")
-        if self.auth_mode is AuthMode.GOOGLE and not self.google_oauth_client_ids:
-            raise ValueError("auth_mode=google requires GOOGLE_OAUTH_CLIENT_IDS to be set")
+        if self.auth_mode is AuthMode.GOOGLE and not self.allowed_google_client_ids:
+            raise ValueError(
+                "auth_mode=google requires GOOGLE_OAUTH_CLIENT_IDS or "
+                "MOBILE_CLIENT_ID / WEB_CLIENT_ID to be set"
+            )
         if (
             self.is_production
             and self.ai_provider is AIProviderName.GEMINI

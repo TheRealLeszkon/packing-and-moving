@@ -19,8 +19,12 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.ratelimit import SlidingWindowLimiter
 from app.db.session import dispose_engine
+from app.middleware.metrics import MetricsMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,21 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Middleware is applied outermost-last. Desired execution order (outer -> inner):
+    # SecurityHeaders -> RequestContext -> Metrics -> RateLimit -> routing, so that
+    # rate-limited responses are still logged, counted, and carry security headers.
+    if settings.rate_limit_enabled:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limiter=SlidingWindowLimiter(),
+            limit=settings.rate_limit_requests,
+            auth_limit=settings.rate_limit_auth_requests,
+            window=settings.rate_limit_window_seconds,
+        )
+    app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
+
     register_exception_handlers(app)
     app.include_router(api_router)
     return app

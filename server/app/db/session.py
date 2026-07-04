@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -30,13 +31,23 @@ AFTER_COMMIT_HOOKS = "after_commit_hooks"
 def register_after_commit(session: AsyncSession, hook: Callable[[], None]) -> None:
     session.info.setdefault(AFTER_COMMIT_HOOKS, []).append(hook)
 
-engine: AsyncEngine = create_async_engine(
-    settings.sqlalchemy_url,
-    echo=settings.db_echo,
-    pool_size=settings.db_pool_size,
-    max_overflow=settings.db_max_overflow,
-    pool_pre_ping=True,  # transparently recycle stale connections
-)
+def _create_engine() -> AsyncEngine:
+    if settings.db_use_nullpool:
+        # No pooling: every session opens a fresh connection. Used under pytest
+        # so connections never leak across per-test event loops.
+        return create_async_engine(
+            settings.sqlalchemy_url, echo=settings.db_echo, poolclass=NullPool
+        )
+    return create_async_engine(
+        settings.sqlalchemy_url,
+        echo=settings.db_echo,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_pre_ping=True,  # transparently recycle stale connections
+    )
+
+
+engine: AsyncEngine = _create_engine()
 
 SessionFactory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     bind=engine,

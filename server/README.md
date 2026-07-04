@@ -38,6 +38,22 @@ record jobs without dispatching (e.g. when running the API without a worker), an
 
 Health check: `GET http://localhost:8000/health` · Docs: `/docs` (non-prod).
 
+Requests pass through hardening middleware: security headers, a per-client
+sliding-window rate limiter (tighter on `/auth`), and in-process request metrics
+(exposed at `GET /admin/metrics`, ADMIN only). Admin operators also get fleet-wide
+listings and a failed-job requeue under `/admin`.
+
+## Tests
+
+```bash
+uv sync --extra dev --extra workers --extra media --extra cloud
+uv run pytest
+```
+
+Integration tests run the real ASGI app against the configured Postgres database
+with in-memory storage and a deterministic stub AI provider (no Gemini calls, no
+broker); they use unique per-test data, so no teardown is needed.
+
 ## Architecture
 
 Clean layering — routes → services → repositories → database. See `app/`:

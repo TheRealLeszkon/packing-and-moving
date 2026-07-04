@@ -88,6 +88,7 @@ def require_role(
     return _dependency
 
 
-# Convenience aliases for the two primary roles.
+# Convenience aliases for the primary roles.
 RequireCustomer = Annotated[User, Depends(require_role(UserRole.CUSTOMER))]
 RequireSurveyor = Annotated[User, Depends(require_role(UserRole.SURVEYOR))]
+RequireAdmin = Annotated[User, Depends(require_role(UserRole.ADMIN))]

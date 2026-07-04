@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 20
     db_echo: bool = False
+    # Use a non-pooling engine (NullPool). Required under pytest, where each test
+    # runs on its own event loop and a pooled asyncpg connection from a previous
+    # loop cannot be reused. Left off in production for connection pooling.
+    db_use_nullpool: bool = False
 
     # ---- Auth / JWT ----
     jwt_secret: str
@@ -101,9 +105,20 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     # Cap the number of images sent to the model in one analysis (cost/latency).
     ai_max_images: int = 30
+    # Upper bound on items accepted from a single AI response (guards against a
+    # malformed/adversarial response trying to insert thousands of rows).
+    ai_max_items: int = 200
     ai_request_timeout_seconds: int = 120
     # Retries for *transient* provider errors, applied inside the provider.
     ai_max_retries: int = 2
+
+    # ---- Rate limiting ----
+    # In-process sliding-window limiter. For multi-instance deployments back this
+    # with Redis; the limiter interface is designed to be swapped.
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 120        # general requests per window per client
+    rate_limit_window_seconds: int = 60
+    rate_limit_auth_requests: int = 20    # tighter budget for /auth endpoints
 
     # ---- Upload limits ----
     max_image_size_mb: int = 25

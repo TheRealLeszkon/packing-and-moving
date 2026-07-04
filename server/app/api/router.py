@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.routes import (
+    admin,
     auth,
     health,
     media,
@@ -27,3 +28,4 @@ api_router.include_router(surveys.router)
 api_router.include_router(survey_requests.router)
 api_router.include_router(media.router)
 api_router.include_router(survey_items.router)
+api_router.include_router(admin.router)

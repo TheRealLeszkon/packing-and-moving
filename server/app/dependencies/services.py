@@ -14,6 +14,7 @@ from app.dependencies.database import SessionDep
 from app.repositories.item import SurveyItemRepository
 from app.repositories.media import MediaRepository
 from app.repositories.survey import SurveyRepository
+from app.services.admin import AdminService
 from app.services.item import SurveyItemService
 from app.services.media import MediaService
 from app.services.survey import SurveyService
@@ -51,3 +52,10 @@ def get_media_service(session: SessionDep, storage: StorageDep) -> MediaService:
 
 
 MediaServiceDep = Annotated[MediaService, Depends(get_media_service)]
+
+
+def get_admin_service(session: SessionDep) -> AdminService:
+    return AdminService(session, get_dispatcher())
+
+
+AdminServiceDep = Annotated[AdminService, Depends(get_admin_service)]

@@ -1,0 +1,41 @@
+package com.packingandmoving.surveyagent.ui.navigation
+
+import kotlinx.serialization.Serializable
+
+// Type-safe navigation routes (one per screen). Only IDs are passed between screens;
+// each screen reloads its own data (CLAUDE.md "Navigation").
+
+@Serializable
+object SignIn
+
+// Bottom-navigation top-level destinations.
+@Serializable
+object Home
+
+@Serializable
+object Surveys
+
+@Serializable
+object Settings
+
+// Survey flow.
+@Serializable
+object CreateSurvey
+
+@Serializable
+data class SurveyDetail(val surveyId: String)
+
+@Serializable
+data class Camera(val surveyId: String)
+
+@Serializable
+data class Processing(val surveyId: String)
+
+@Serializable
+data class AiReport(val surveyId: String)
+
+@Serializable
+data class ItemDetail(val surveyId: String, val itemId: String)
+
+@Serializable
+data class Summary(val surveyId: String)

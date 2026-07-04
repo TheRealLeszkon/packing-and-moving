@@ -14,9 +14,14 @@ from fastapi import APIRouter, Query, status
 
 from app.core.responses import SuccessResponse
 from app.dependencies.auth import CurrentUser, RequireCustomer
-from app.dependencies.services import SurveyServiceDep
+from app.dependencies.services import ItemServiceDep, SurveyServiceDep
 from app.schemas.common import MessageResponse
-from app.schemas.item import SurveyItemListResponse, SurveyItemResponse
+from app.schemas.item import (
+    SurveyItemCreate,
+    SurveyItemListResponse,
+    SurveyItemResponse,
+    SurveySummaryResponse,
+)
 from app.schemas.pagination import Page, PageParams
 from app.schemas.survey import (
     CancelRequest,
@@ -108,6 +113,33 @@ async def survey_items(
     return SuccessResponse(
         data=SurveyItemListResponse(items=payload, count=len(payload))
     )
+
+
+@router.post(
+    "/{survey_id}/items",
+    response_model=SuccessResponse[SurveyItemResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Surveyor: add an inventory item manually",
+)
+async def add_item(
+    survey_id: uuid.UUID,
+    payload: SurveyItemCreate,
+    user: CurrentUser,
+    service: ItemServiceDep,
+) -> SuccessResponse[SurveyItemResponse]:
+    item = await service.create(user, survey_id, payload)
+    return SuccessResponse(data=SurveyItemResponse.from_item(item))
+
+
+@router.get(
+    "/{survey_id}/summary",
+    response_model=SuccessResponse[SurveySummaryResponse],
+    summary="Aggregate inventory summary (volume, value, category/room breakdown)",
+)
+async def survey_summary(
+    survey_id: uuid.UUID, user: CurrentUser, service: ItemServiceDep
+) -> SuccessResponse[SurveySummaryResponse]:
+    return SuccessResponse(data=await service.summary(user, survey_id))
 
 
 @router.delete(

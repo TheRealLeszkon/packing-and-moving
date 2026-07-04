@@ -11,8 +11,10 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.dependencies.database import SessionDep
+from app.repositories.item import SurveyItemRepository
 from app.repositories.media import MediaRepository
 from app.repositories.survey import SurveyRepository
+from app.services.item import SurveyItemService
 from app.services.media import MediaService
 from app.services.survey import SurveyService
 from app.storage.base import StoragePort
@@ -25,6 +27,16 @@ def get_survey_service(session: SessionDep) -> SurveyService:
 
 
 SurveyServiceDep = Annotated[SurveyService, Depends(get_survey_service)]
+
+
+def get_item_service(session: SessionDep) -> SurveyItemService:
+    return SurveyItemService(
+        items=SurveyItemRepository(session),
+        surveys=SurveyRepository(session),
+    )
+
+
+ItemServiceDep = Annotated[SurveyItemService, Depends(get_item_service)]
 
 StorageDep = Annotated[StoragePort, Depends(get_storage)]
 

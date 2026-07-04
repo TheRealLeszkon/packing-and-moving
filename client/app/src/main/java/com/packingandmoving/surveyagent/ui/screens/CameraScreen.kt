@@ -2,6 +2,7 @@ package com.packingandmoving.surveyagent.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -26,12 +27,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,27 +48,23 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.packingandmoving.surveyagent.camera.getCameraProvider
-import com.packingandmoving.surveyagent.camera.toImagePart
 import com.packingandmoving.surveyagent.ui.theme.Spacing
-import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
-import com.packingandmoving.surveyagent.viewmodel.CameraViewModel
+import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
 import java.io.File
 
 /**
- * Camera capture (SCREEN_5). Live CameraX preview with a single capture button that saves a
- * JPEG to the cache and uploads it to POST /surveys/{id}/images with the optional room label.
- * Requests the CAMERA permission on entry. Photo-only for now (videos are a later addition).
+ * Camera capture. Live CameraX preview with a shutter that saves a full-quality JPEG and
+ * stages its URI in the shared [CaptureViewModel] — no upload here, so the shutter returns
+ * to preview instantly. Photos are uploaded later, in one batch, from the review screen.
  */
 @Composable
 fun CameraScreen(
-    surveyId: String,
+    captureViewModel: CaptureViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: CameraViewModel = viewModel(factory = AppViewModelFactory),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by captureViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var hasPermission by remember {
@@ -88,15 +84,9 @@ fun CameraScreen(
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermission) {
             CameraContent(
-                surveyId = surveyId,
-                uploadedCount = uiState.uploadedCount,
-                isUploading = uiState.isUploading,
-                roomLocation = uiState.roomLocation,
-                errorMessage = uiState.errorMessage,
-                onRoomChange = viewModel::onRoomLocationChange,
-                onCaptured = { part -> viewModel.uploadImages(surveyId, listOf(part)) },
-                onCaptureError = viewModel::onCaptureError,
-                onBack = onBack,
+                stagedCount = uiState.photos.size,
+                onCaptured = { uri -> captureViewModel.addPhoto(uri) },
+                onDone = onBack,
             )
         } else {
             PermissionRequest(
@@ -109,21 +99,22 @@ fun CameraScreen(
 
 @Composable
 private fun CameraContent(
-    surveyId: String,
-    uploadedCount: Int,
-    isUploading: Boolean,
-    roomLocation: String,
-    errorMessage: String?,
-    onRoomChange: (String) -> Unit,
-    onCaptured: (okhttp3.MultipartBody.Part) -> Unit,
-    onCaptureError: (String) -> Unit,
-    onBack: () -> Unit,
+    stagedCount: Int,
+    onCaptured: (Uri) -> Unit,
+    onDone: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
-    val imageCapture = remember { ImageCapture.Builder().build() }
+    // MAXIMIZE_QUALITY: capture the highest-quality frame; the shutter callback is async so
+    // preview never blocks (item 2: instant capture, max quality).
+    val imageCapture = remember {
+        ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .build()
+    }
     var flashEnabled by remember { mutableStateOf(false) }
+    var captureError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val provider = context.getCameraProvider()
@@ -147,11 +138,11 @@ private fun CameraContent(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    onCaptured(file.toImagePart())
+                    onCaptured(Uri.fromFile(file))
                 }
 
                 override fun onError(exception: ImageCaptureException) {
-                    onCaptureError(exception.message ?: "Failed to capture photo.")
+                    captureError = exception.message ?: "Failed to capture photo."
                 }
             },
         )
@@ -160,40 +151,27 @@ private fun CameraContent(
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
-        // Top overlay: back, title, flash, and the room label field.
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.45f))
                 .padding(Spacing.Small),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
-                }
-                Text(
-                    text = "SCAN ROOM INVENTORY",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f),
-                )
-                androidx.compose.material3.TextButton(onClick = { flashEnabled = !flashEnabled }) {
-                    Text(
-                        text = if (flashEnabled) "Flash On" else "Flash Off",
-                        color = Color.White,
-                    )
-                }
+            IconButton(onClick = onDone) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
             }
-            OutlinedTextField(
-                value = roomLocation,
-                onValueChange = onRoomChange,
-                label = { Text("Room (optional)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            Text(
+                text = "SCAN ROOM INVENTORY",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                modifier = Modifier.weight(1f),
             )
+            TextButton(onClick = { flashEnabled = !flashEnabled }) {
+                Text(if (flashEnabled) "Flash On" else "Flash Off", color = Color.White)
+            }
         }
 
-        // Bottom controls.
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -203,35 +181,30 @@ private fun CameraContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.Small),
         ) {
-            errorMessage?.let {
+            captureError?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
             }
-            Text("Captured: $uploadedCount", color = Color.White)
+            Text("Captured: $stagedCount", color = Color.White)
 
-            CaptureButton(enabled = !isUploading, isBusy = isUploading, onClick = ::capture)
+            CaptureButton(onClick = ::capture)
 
-            Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                Text("Done")
+            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                Text(if (stagedCount > 0) "Done ($stagedCount)" else "Done")
             }
         }
     }
 }
 
 @Composable
-private fun CaptureButton(enabled: Boolean, isBusy: Boolean, onClick: () -> Unit) {
+private fun CaptureButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(72.dp)
             .border(4.dp, Color.White, CircleShape)
             .padding(6.dp)
-            .background(if (enabled) Color.White else Color.Gray, CircleShape)
-            .then(if (enabled) Modifier.clickable(onClickLabel = "Capture", onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (isBusy) {
-            CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
-        }
-    }
+            .background(Color.White, CircleShape)
+            .clickable(onClickLabel = "Capture", onClick = onClick),
+    )
 }
 
 @Composable

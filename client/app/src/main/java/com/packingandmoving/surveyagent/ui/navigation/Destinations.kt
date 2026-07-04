@@ -25,6 +25,14 @@ object CreateSurvey
 @Serializable
 data class SurveyDetail(val surveyId: String)
 
+// Capture flow: a nested graph so the camera and the photo-review screen share one
+// graph-scoped CaptureViewModel (staged photos survive moving between them + rotation).
+@Serializable
+data class Capture(val surveyId: String)
+
+@Serializable
+object ReviewPhotos
+
 @Serializable
 data class Camera(val surveyId: String)
 

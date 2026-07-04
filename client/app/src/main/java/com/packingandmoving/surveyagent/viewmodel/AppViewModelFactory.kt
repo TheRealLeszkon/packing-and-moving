@@ -17,7 +17,7 @@ val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     initializer { SettingsViewModel(AppRepositories.user, AppRepositories.auth) }
     initializer { CreateSurveyViewModel(AppRepositories.survey) }
     initializer { SurveyDetailViewModel(AppRepositories.survey) }
-    initializer { CameraViewModel(AppRepositories.media) }
+    initializer { CaptureViewModel(AppRepositories.media, AppRepositories.survey) }
     initializer { ProcessingViewModel(AppRepositories.survey) }
     initializer { AiReportViewModel(AppRepositories.item) }
     initializer { ItemDetailViewModel(AppRepositories.item, AppRepositories.media) }

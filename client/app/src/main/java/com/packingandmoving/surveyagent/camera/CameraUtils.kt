@@ -1,12 +1,13 @@
 package com.packingandmoving.surveyagent.camera
 
+import android.content.ContentResolver
 import android.content.Context
+import android.net.Uri
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
-import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.asRequestBody
-import java.io.File
+import okhttp3.RequestBody.Companion.toRequestBody
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -25,12 +26,18 @@ suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutin
 }
 
 /**
- * Wrap a captured JPEG file as a multipart part named `files` — the field the backend's
- * POST /surveys/{id}/images expects (it accepts a list under that name).
+ * Read an image [Uri] (camera `file://` or gallery `content://`) and wrap its bytes as a
+ * multipart part named `files` — the field POST /surveys/{id}/images expects. The original
+ * bytes are sent uncompressed; the backend resizes. Call off the main thread.
  */
-fun File.toImagePart(): MultipartBody.Part =
-    MultipartBody.Part.createFormData(
+fun Uri.toImagePart(resolver: ContentResolver): MultipartBody.Part {
+    val bytes = resolver.openInputStream(this)?.use { it.readBytes() }
+        ?: error("Unable to read image at $this")
+    val mimeType = resolver.getType(this) ?: "image/jpeg"
+    val extension = if (mimeType.contains("png", ignoreCase = true)) "png" else "jpg"
+    return MultipartBody.Part.createFormData(
         name = "files",
-        filename = name,
-        body = asRequestBody("image/jpeg".toMediaType()),
+        filename = "upload_${System.currentTimeMillis()}_${hashCode()}.$extension",
+        body = bytes.toRequestBody(mimeType.toMediaTypeOrNull()),
     )
+}

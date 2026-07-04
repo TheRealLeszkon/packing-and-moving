@@ -4,22 +4,28 @@ import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.packingandmoving.surveyagent.ui.screens.AiReportScreen
 import com.packingandmoving.surveyagent.ui.screens.CameraScreen
 import com.packingandmoving.surveyagent.ui.screens.CreateSurveyScreen
 import com.packingandmoving.surveyagent.ui.screens.HomeScreen
 import com.packingandmoving.surveyagent.ui.screens.ItemDetailScreen
+import com.packingandmoving.surveyagent.ui.screens.PhotoReviewScreen
 import com.packingandmoving.surveyagent.ui.screens.ProcessingScreen
 import com.packingandmoving.surveyagent.ui.screens.SettingsScreen
 import com.packingandmoving.surveyagent.ui.screens.SignInScreen
 import com.packingandmoving.surveyagent.ui.screens.SummaryScreen
 import com.packingandmoving.surveyagent.ui.screens.SurveyDetailScreen
 import com.packingandmoving.surveyagent.ui.screens.SurveysScreen
+import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
+import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
 
 /**
  * The app's navigation graph. Screens receive plain navigation callbacks (not the
@@ -82,7 +88,7 @@ fun SurveyNavHost(
             val route = entry.toRoute<SurveyDetail>()
             SurveyDetailScreen(
                 surveyId = route.surveyId,
-                onOpenCamera = { id -> navController.navigate(Camera(id)) },
+                onOpenCamera = { id -> navController.navigate(Capture(id)) },
                 onOpenProcessing = { id -> navController.navigate(Processing(id)) },
                 onOpenReport = { id -> navController.navigate(AiReport(id)) },
                 onOpenSummary = { id -> navController.navigate(Summary(id)) },
@@ -90,12 +96,40 @@ fun SurveyNavHost(
             )
         }
 
-        composable<Camera> { entry ->
-            val route = entry.toRoute<Camera>()
-            CameraScreen(
-                surveyId = route.surveyId,
-                onBack = { navController.popBackStack() },
-            )
+        // Capture flow: nested graph so PhotoReview + Camera share one graph-scoped
+        // CaptureViewModel (staged photos persist across camera<->review and rotation).
+        navigation<Capture>(startDestination = ReviewPhotos) {
+            composable<ReviewPhotos> { entry ->
+                val parentEntry = remember(entry) {
+                    navController.getBackStackEntry(entry.destination.parent!!.route!!)
+                }
+                val surveyId = parentEntry.toRoute<Capture>().surveyId
+                val captureViewModel: CaptureViewModel =
+                    viewModel(viewModelStoreOwner = parentEntry, factory = AppViewModelFactory)
+                PhotoReviewScreen(
+                    surveyId = surveyId,
+                    viewModel = captureViewModel,
+                    onTakePhotos = { navController.navigate(Camera(surveyId)) },
+                    onViewResults = { id ->
+                        navController.navigate(AiReport(id)) {
+                            popUpTo(Capture(surveyId)) { inclusive = true }
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable<Camera> { entry ->
+                val parentEntry = remember(entry) {
+                    navController.getBackStackEntry(entry.destination.parent!!.route!!)
+                }
+                val captureViewModel: CaptureViewModel =
+                    viewModel(viewModelStoreOwner = parentEntry, factory = AppViewModelFactory)
+                CameraScreen(
+                    captureViewModel = captureViewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<Processing> { entry ->

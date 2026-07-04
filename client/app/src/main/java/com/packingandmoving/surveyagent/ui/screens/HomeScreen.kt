@@ -1,10 +1,8 @@
 package com.packingandmoving.surveyagent.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +28,7 @@ import com.packingandmoving.surveyagent.model.Survey
 import com.packingandmoving.surveyagent.ui.components.AppCard
 import com.packingandmoving.surveyagent.ui.components.PrimaryActionButton
 import com.packingandmoving.surveyagent.ui.components.StatusBadge
+import com.packingandmoving.surveyagent.ui.components.SurveyCard
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
 import com.packingandmoving.surveyagent.viewmodel.HomeUiState
@@ -149,45 +148,5 @@ private fun DraftCard(survey: Survey, onContinue: () -> Unit) {
         )
         Spacer(Modifier.height(Spacing.Small))
         OutlinedButton(onClick = onContinue) { Text("Continue Survey") }
-    }
-}
-
-@Composable
-private fun SurveyCard(survey: Survey, onClick: () -> Unit) {
-    AppCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = survey.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(end = Spacing.Small),
-            )
-            StatusBadge(status = survey.status)
-        }
-        Spacer(Modifier.height(Spacing.ExtraSmall))
-        Text(
-            text = "${survey.originAddress} → ${survey.destinationAddress}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-
-        val estimates = listOfNotNull(
-            survey.totalVolumeEstimate?.let { "Est. volume: $it m³" },
-            survey.totalValueEstimate?.let { "Est. value: $$it" },
-        )
-        if (estimates.isNotEmpty()) {
-            Spacer(Modifier.height(Spacing.ExtraSmall))
-            Text(
-                text = estimates.joinToString("   •   "),
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
     }
 }

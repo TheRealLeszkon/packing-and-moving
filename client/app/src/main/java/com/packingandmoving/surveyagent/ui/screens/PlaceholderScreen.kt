@@ -16,6 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 
+// Placeholder ids used only to exercise navigation from screens not yet wired to real data.
+const val DEMO_SURVEY_ID = "demo-survey"
+const val DEMO_ITEM_ID = "demo-item"
+
 /** A navigation action rendered as a button on a placeholder screen. */
 data class PlaceholderAction(val label: String, val onClick: () -> Unit)
 

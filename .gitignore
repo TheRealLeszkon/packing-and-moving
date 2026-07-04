@@ -9,6 +9,9 @@ packingandmoving-*.json
 client_secret_*.json
 client_secret*.apps.googleusercontent.com.json
 
+# ── Local test fixtures (real survey photos, not for the repo) ────────────────
+PNMTestingPhotos/
+
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

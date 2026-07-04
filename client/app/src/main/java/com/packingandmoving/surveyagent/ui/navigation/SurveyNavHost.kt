@@ -17,6 +17,7 @@ import com.packingandmoving.surveyagent.ui.screens.CameraScreen
 import com.packingandmoving.surveyagent.ui.screens.CreateSurveyScreen
 import com.packingandmoving.surveyagent.ui.screens.HomeScreen
 import com.packingandmoving.surveyagent.ui.screens.ItemDetailScreen
+import com.packingandmoving.surveyagent.ui.screens.ManualItemScreen
 import com.packingandmoving.surveyagent.ui.screens.PhotoReviewScreen
 import com.packingandmoving.surveyagent.ui.screens.ProcessingScreen
 import com.packingandmoving.surveyagent.ui.screens.SettingsScreen
@@ -151,7 +152,17 @@ fun SurveyNavHost(
                 onOpenItem = { surveyId, itemId ->
                     navController.navigate(ItemDetail(surveyId, itemId))
                 },
+                onAddItem = { id -> navController.navigate(AddItem(id)) },
                 onOpenSummary = { id -> navController.navigate(Summary(id)) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable<AddItem> { entry ->
+            val route = entry.toRoute<AddItem>()
+            ManualItemScreen(
+                surveyId = route.surveyId,
+                onCreated = { navController.popBackStack() },
                 onBack = { navController.popBackStack() },
             )
         }

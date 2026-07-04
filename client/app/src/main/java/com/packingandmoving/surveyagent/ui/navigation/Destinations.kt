@@ -46,4 +46,7 @@ data class AiReport(val surveyId: String)
 data class ItemDetail(val surveyId: String, val itemId: String)
 
 @Serializable
+data class AddItem(val surveyId: String)
+
+@Serializable
 data class Summary(val surveyId: String)

@@ -52,4 +52,20 @@ class AiReportViewModel(private val itemRepository: ItemRepository) : ViewModel(
     }
 
     fun onQueryChange(value: String) = _uiState.update { it.copy(query = value) }
+
+    /** Delete an item and drop it from the list on success (§ DELETE /survey-items/{id}). */
+    fun deleteItem(itemId: String) {
+        viewModelScope.launch {
+            when (val result = itemRepository.deleteItem(itemId)) {
+                is ApiResult.Success ->
+                    _uiState.update { state ->
+                        state.copy(allItems = state.allItems.filterNot { it.id == itemId })
+                    }
+                is ApiResult.Failure ->
+                    _uiState.update { it.copy(errorMessage = result.error.message) }
+            }
+        }
+    }
+
+    fun consumeError() = _uiState.update { it.copy(errorMessage = null) }
 }

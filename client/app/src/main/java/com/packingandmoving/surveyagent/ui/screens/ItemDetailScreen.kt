@@ -3,7 +3,6 @@ package com.packingandmoving.surveyagent.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,41 +15,44 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.packingandmoving.surveyagent.ui.components.ItemFormFields
 import com.packingandmoving.surveyagent.ui.theme.Dimens
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
-import com.packingandmoving.surveyagent.viewmodel.ItemDetailUiState
 import com.packingandmoving.surveyagent.viewmodel.ItemDetailViewModel
 
 /**
- * Item Detail / edit (SCREEN_8 → PATCH /survey-items/{id}). Shows the evidencing photos
- * (signed URLs via Coil) and an editable form; only changed fields are sent. Editing is
- * backend-gated to the assigned surveyor while ready_for_review/revision_required.
+ * Item detail / full edit (SCREEN_8). Every field is editable via the shared form; Save
+ * PATCHes changes, the toolbar Delete removes the item. Photos load from signed URLs.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,11 +64,38 @@ fun ItemDetailScreen(
     viewModel: ItemDetailViewModel = viewModel(factory = AppViewModelFactory),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(surveyId, itemId) { viewModel.load(surveyId, itemId) }
+    LaunchedEffect(uiState.isDeleted) { if (uiState.isDeleted) onBack() }
+    LaunchedEffect(uiState.isSaved) {
+        if (uiState.isSaved) {
+            snackbar.showSnackbar("Saved")
+            viewModel.consumeSaved()
+        }
+    }
+    LaunchedEffect(uiState.errorMessage) {
+        uiState.errorMessage?.let { snackbar.showSnackbar(it) }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete item?") },
+            text = { Text("This removes the item from the inventory.") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteConfirm = false; viewModel.delete(itemId) }) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } },
+        )
+    }
 
     Scaffold(
         modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text(uiState.item?.itemName ?: "Item") },
@@ -75,15 +104,31 @@ fun ItemDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showDeleteConfirm = true }, enabled = uiState.item != null) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete item")
+                    }
+                },
             )
         },
         bottomBar = {
-            SaveBar(
-                isSaving = uiState.isSaving,
-                isSaved = uiState.isSaved,
-                enabled = uiState.item != null && !uiState.isSaving,
-                onSave = { viewModel.save(itemId) },
-            )
+            Surface(tonalElevation = 3.dp) {
+                Button(
+                    onClick = { viewModel.save(itemId) },
+                    enabled = uiState.item != null && !uiState.isSaving && !uiState.isDeleting,
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.Medium),
+                ) {
+                    if (uiState.isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    } else {
+                        Text("Save Changes")
+                    }
+                }
+            }
         },
     ) { innerPadding ->
         when {
@@ -97,172 +142,34 @@ fun ItemDetailScreen(
                     Text(uiState.errorMessage ?: "Item unavailable.", color = MaterialTheme.colorScheme.error)
                 }
 
-            else -> EditForm(uiState, viewModel, Modifier.padding(innerPadding))
-        }
-    }
-}
-
-@Composable
-private fun EditForm(
-    uiState: ItemDetailUiState,
-    viewModel: ItemDetailViewModel,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = Spacing.Medium)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(Spacing.Medium),
-    ) {
-        Spacer(Modifier.height(Spacing.Small))
-
-        Hero(imageUrls = uiState.imageUrls, confidenceScore = uiState.item?.confidenceScore)
-
-        SectionTitle("Physical properties")
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
-            DecimalField("Height (cm)", uiState.heightCm, viewModel::onHeightChange, Modifier.weight(1f))
-            DecimalField("Width (cm)", uiState.widthCm, viewModel::onWidthChange, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
-            DecimalField("Depth (cm)", uiState.depthCm, viewModel::onDepthChange, Modifier.weight(1f))
-            DecimalField("Weight (kg)", uiState.weightKg, viewModel::onWeightChange, Modifier.weight(1f))
-        }
-        DecimalField("Estimated value", uiState.estimatedValue, viewModel::onValueChange, Modifier.fillMaxWidth())
-
-        SectionTitle("Handling")
-        SwitchRow("Fragile", uiState.fragile, viewModel::onFragileChange)
-        SwitchRow("Needs disassembly", uiState.needsDisassembly, viewModel::onNeedsDisassemblyChange)
-
-        SectionTitle("Notes")
-        OutlinedTextField(
-            value = uiState.remarks,
-            onValueChange = viewModel::onRemarksChange,
-            label = { Text("Remarks") },
-            minLines = 3,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        uiState.errorMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-        }
-
-        Spacer(Modifier.height(Spacing.Medium))
-    }
-}
-
-@Composable
-private fun Hero(imageUrls: List<String>, confidenceScore: String?) {
-    if (imageUrls.isEmpty()) {
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth().height(200.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) { Text("No photos") }
-        }
-        return
-    }
-
-    Box {
-        AsyncImage(
-            model = imageUrls.first(),
-            contentDescription = "Item photo",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(MaterialTheme.shapes.medium),
-        )
-        confidenceScore?.toDoubleOrNull()?.let { score ->
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.padding(Spacing.Small),
+            else -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = Spacing.Medium)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Medium),
             ) {
-                Text(
-                    "${(score * 100).toInt()}% match",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-            }
-        }
-    }
-
-    if (imageUrls.size > 1) {
-        Spacer(Modifier.height(Spacing.Small))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
-            items(imageUrls.drop(1)) { url ->
-                AsyncImage(
-                    model = url,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(Dimens.GalleryThumbnail)
-                        .clip(MaterialTheme.shapes.small),
-                )
+                Spacer(Modifier.height(Spacing.Small))
+                Gallery(uiState.imageUrls)
+                ItemFormFields(form = uiState.form, onChange = viewModel::onFormChange)
+                Spacer(Modifier.height(Spacing.Large))
             }
         }
     }
 }
 
 @Composable
-private fun DecimalField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium)
-}
-
-@Composable
-private fun SaveBar(isSaving: Boolean, isSaved: Boolean, enabled: Boolean, onSave: () -> Unit) {
-    Surface(tonalElevation = 3.dp) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(Spacing.Medium),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.Medium),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isSaved) {
-                Text("Saved ✓", color = MaterialTheme.colorScheme.primary)
-            }
-            Button(onClick = onSave, enabled = enabled, modifier = Modifier.weight(1f)) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Text("Save Changes")
-                }
-            }
+private fun Gallery(imageUrls: List<String>) {
+    if (imageUrls.isEmpty()) return
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
+        items(imageUrls) { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = "Item photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(Dimens.GalleryThumbnail).clip(MaterialTheme.shapes.medium),
+            )
         }
     }
 }

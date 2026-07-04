@@ -3,6 +3,7 @@ package com.packingandmoving.surveyagent.camera
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.webkit.MimeTypeMap
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -34,7 +35,7 @@ suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutin
 fun Uri.toMediaPart(resolver: ContentResolver): MultipartBody.Part {
     val bytes = resolver.openInputStream(this)?.use { it.readBytes() }
         ?: error("Unable to read media at $this")
-    val mimeType = resolver.getType(this) ?: "application/octet-stream"
+    val mimeType = resolveMimeType(resolver)
     return MultipartBody.Part.createFormData(
         name = "files",
         filename = "upload_${System.currentTimeMillis()}_${hashCode()}.${mimeType.fileExtension()}",
@@ -44,7 +45,26 @@ fun Uri.toMediaPart(resolver: ContentResolver): MultipartBody.Part {
 
 /** Whether a [Uri]'s content type is a video (drives image vs. video upload endpoint). */
 fun Uri.isVideo(resolver: ContentResolver): Boolean =
-    resolver.getType(this)?.startsWith("video", ignoreCase = true) == true
+    resolveMimeType(resolver).startsWith("video", ignoreCase = true)
+
+/**
+ * The MIME type for this media [Uri]. [ContentResolver.getType] only resolves a type for
+ * gallery `content://` Uris — camera captures are `file://` Uris (type is null) and some
+ * devices report a generic `application/octet-stream`. In those cases fall back to the file
+ * extension, which we control (`.mp4`, `.jpg`). The backend validates by MIME and only
+ * accepts image types and `video/mp4`, so a correct type here is required for uploads to pass.
+ */
+private fun Uri.resolveMimeType(resolver: ContentResolver): String {
+    val resolved = resolver.getType(this)
+    if (resolved != null && !resolved.equals("application/octet-stream", ignoreCase = true)) {
+        return resolved
+    }
+    val extension = MimeTypeMap.getFileExtensionFromUrl(toString())
+        .ifEmpty { lastPathSegment?.substringAfterLast('.', "").orEmpty() }
+        .lowercase()
+    return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+        ?: if (extension == "mp4") "video/mp4" else "application/octet-stream"
+}
 
 private fun String.fileExtension(): String = when {
     contains("png", ignoreCase = true) -> "png"

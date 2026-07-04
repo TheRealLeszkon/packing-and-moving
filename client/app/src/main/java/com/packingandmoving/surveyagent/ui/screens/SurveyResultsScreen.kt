@@ -197,7 +197,7 @@ private fun SummarySection(summary: SurveySummary, items: List<SurveyItem>) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
             StatTile("Est. weight", if (totalWeight > 0) "%.1f kg".format(totalWeight) else "—", Modifier.weight(1f))
-            StatTile("Items", "${summary.totalQuantity} (${summary.distinctItems} kinds)", Modifier.weight(1f))
+            StatTile("Items (${summary.distinctItems} kinds)", "${summary.totalQuantity}", Modifier.weight(1f))
         }
 
         val categoryRows = summary.byCategory

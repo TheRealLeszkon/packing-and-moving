@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.packingandmoving.surveyagent.model.Survey
 import com.packingandmoving.surveyagent.model.SurveyStatus
@@ -171,7 +172,12 @@ private fun DetailContent(
         AppCard(modifier = Modifier.fillMaxWidth()) {
             StatusBadge(status = survey.status)
             Spacer(Modifier.height(Spacing.Small))
-            Text(survey.name, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                survey.name,
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(Spacing.ExtraSmall))
             LabeledLine("From", survey.originAddress)
             LabeledLine("To", survey.destinationAddress)
@@ -235,6 +241,8 @@ private fun LabeledLine(label: String, value: String) {
         text = "$label: $value",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 

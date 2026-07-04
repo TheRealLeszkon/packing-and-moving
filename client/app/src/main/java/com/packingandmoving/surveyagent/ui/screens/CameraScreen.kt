@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -13,6 +14,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,17 +32,21 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -115,17 +121,27 @@ private fun CameraContent(
     }
     var flashEnabled by remember { mutableStateOf(false) }
     var captureError by remember { mutableStateOf<String?>(null) }
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var zoomRatio by remember { mutableFloatStateOf(1f) }
+    var maxZoom by remember { mutableFloatStateOf(1f) }
+
+    fun applyZoom(target: Float) {
+        val clamped = target.coerceIn(1f, maxZoom)
+        zoomRatio = clamped
+        camera?.cameraControl?.setZoomRatio(clamped)
+    }
 
     LaunchedEffect(Unit) {
         val provider = context.getCameraProvider()
         val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
         provider.unbindAll()
-        provider.bindToLifecycle(
+        camera = provider.bindToLifecycle(
             lifecycleOwner,
             CameraSelector.DEFAULT_BACK_CAMERA,
             preview,
             imageCapture,
         )
+        maxZoom = camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
     }
 
     fun capture() {
@@ -149,7 +165,15 @@ private fun CameraContent(
     }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(maxZoom) {
+                    // Pinch-to-zoom.
+                    detectTransformGestures { _, _, zoom, _ -> applyZoom(zoomRatio * zoom) }
+                },
+        )
 
         Row(
             modifier = Modifier
@@ -184,6 +208,25 @@ private fun CameraContent(
             captureError?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
             }
+
+            if (maxZoom > 1f) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
+                ) {
+                    OutlinedButton(onClick = { applyZoom(zoomRatio - 0.5f) }) { Text("–", color = Color.White) }
+                    Slider(
+                        value = zoomRatio,
+                        onValueChange = ::applyZoom,
+                        valueRange = 1f..maxZoom,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(onClick = { applyZoom(zoomRatio + 0.5f) }) { Text("+", color = Color.White) }
+                }
+                Text("${"%.1f".format(zoomRatio)}×", color = Color.White)
+            }
+
             Text("Captured: $stagedCount", color = Color.White)
 
             CaptureButton(onClick = ::capture)

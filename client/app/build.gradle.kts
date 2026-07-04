@@ -92,15 +92,17 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
 
-    // Image loading
+    // Image loading (+ video frame thumbnails)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.coil.video)
 
-    // CameraX
+    // CameraX (+ video recording)
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.video)
 
     // Authentication (Google Sign-In via Credential Manager) + token storage
     implementation(libs.androidx.credentials)

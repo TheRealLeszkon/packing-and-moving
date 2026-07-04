@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -80,16 +81,16 @@ fun PhotoReviewScreen(
     var showDiscardConfirm by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
 
-    // Guard against losing staged photos on an accidental back-press (item 9).
-    val hasUnsavedPhotos = uiState.photos.isNotEmpty() && uiState.phase == CapturePhase.Editing
-    fun requestBack() = if (hasUnsavedPhotos) { showDiscardConfirm = true } else onBack()
-    BackHandler(enabled = hasUnsavedPhotos) { showDiscardConfirm = true }
+    // Guard against losing staged media on an accidental back-press (item 9).
+    val hasUnsavedMedia = uiState.media.isNotEmpty() && uiState.phase == CapturePhase.Editing
+    fun requestBack() = if (hasUnsavedMedia) { showDiscardConfirm = true } else onBack()
+    BackHandler(enabled = hasUnsavedMedia) { showDiscardConfirm = true }
 
     if (showDiscardConfirm) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showDiscardConfirm = false },
-            title = { Text("Discard photos?") },
-            text = { Text("You have ${uiState.photos.size} photo(s) that haven't been uploaded yet.") },
+            title = { Text("Discard media?") },
+            text = { Text("You have ${uiState.media.size} item(s) that haven't been uploaded yet.") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showDiscardConfirm = false; onBack() }) {
                     Text("Discard")
@@ -103,10 +104,11 @@ fun PhotoReviewScreen(
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(),
-    ) { uris -> if (uris.isNotEmpty()) viewModel.addPhotos(uris) }
+    ) { uris -> if (uris.isNotEmpty()) viewModel.addMedia(uris, context.contentResolver) }
 
+    // Photo Picker with mixed photos + videos.
     fun openGallery() = galleryLauncher.launch(
-        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
     )
 
     if (showAddSheet) {
@@ -122,7 +124,7 @@ fun PhotoReviewScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Survey Photos") },
+                title = { Text("Survey Media") },
                 navigationIcon = {
                     IconButton(onClick = { requestBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -133,7 +135,7 @@ fun PhotoReviewScreen(
         bottomBar = {
             BottomActions(
                 phase = uiState.phase,
-                photoCount = uiState.photos.size,
+                photoCount = uiState.media.size,
                 roomLocation = uiState.roomLocation,
                 errorMessage = uiState.errorMessage,
                 enabled = uiState.phase == CapturePhase.Editing,
@@ -144,7 +146,7 @@ fun PhotoReviewScreen(
             )
         },
     ) { innerPadding ->
-        if (uiState.photos.isEmpty()) {
+        if (uiState.media.isEmpty()) {
             EmptyState(
                 onTakePhotos = onTakePhotos,
                 onChooseFromGallery = ::openGallery,
@@ -158,11 +160,12 @@ fun PhotoReviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
                 verticalArrangement = Arrangement.spacedBy(Spacing.Small),
             ) {
-                items(uiState.photos, key = { it.id }) { photo ->
-                    PhotoThumb(
-                        model = photo.uri,
+                items(uiState.media, key = { it.id }) { item ->
+                    MediaThumb(
+                        model = item.uri,
+                        isVideo = item.isVideo,
                         removable = uiState.phase == CapturePhase.Editing,
-                        onRemove = { viewModel.removePhoto(photo.id) },
+                        onRemove = { viewModel.removeMedia(item.id) },
                     )
                 }
             }
@@ -171,7 +174,7 @@ fun PhotoReviewScreen(
 }
 
 @Composable
-private fun PhotoThumb(model: Any, removable: Boolean, onRemove: () -> Unit) {
+private fun MediaThumb(model: Any, isVideo: Boolean, removable: Boolean, onRemove: () -> Unit) {
     Box(
         Modifier
             .aspectRatio(1f)
@@ -179,10 +182,21 @@ private fun PhotoThumb(model: Any, removable: Boolean, onRemove: () -> Unit) {
     ) {
         AsyncImage(
             model = model,
-            contentDescription = "Survey photo",
+            contentDescription = if (isVideo) "Survey video" else "Survey photo",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
+        if (isVideo) {
+            // Play badge so a video frame reads clearly as a video.
+            Surface(
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.5f),
+                contentColor = Color.White,
+                modifier = Modifier.align(Alignment.Center).size(32.dp),
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.padding(4.dp))
+            }
+        }
         if (removable) {
             Surface(
                 onClick = onRemove,
@@ -191,7 +205,7 @@ private fun PhotoThumb(model: Any, removable: Boolean, onRemove: () -> Unit) {
                 contentColor = Color.White,
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp),
             ) {
-                Icon(Icons.Default.Close, contentDescription = "Remove photo", modifier = Modifier.padding(4.dp))
+                Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.padding(4.dp))
             }
         }
     }

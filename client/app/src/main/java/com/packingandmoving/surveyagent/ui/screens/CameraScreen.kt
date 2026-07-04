@@ -10,6 +10,13 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,10 +67,13 @@ import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
 import java.io.File
 
+private enum class CameraMode { Photo, Video }
+
 /**
- * Camera capture. Live CameraX preview with a shutter that saves a full-quality JPEG and
- * stages its URI in the shared [CaptureViewModel] — no upload here, so the shutter returns
- * to preview instantly. Photos are uploaded later, in one batch, from the review screen.
+ * Camera capture. Live CameraX preview (FIT_CENTER so the full sensor frame shows — no
+ * zoomed-in crop) with a Photo/Video mode toggle. Photos save a full-quality JPEG; videos
+ * record to MP4. Both only *stage* their URI in the shared [CaptureViewModel] — upload
+ * happens later from the review screen, so the shutter returns instantly.
  */
 @Composable
 fun CameraScreen(
@@ -90,8 +101,9 @@ fun CameraScreen(
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermission) {
             CameraContent(
-                stagedCount = uiState.photos.size,
-                onCaptured = { uri -> captureViewModel.addPhoto(uri) },
+                stagedCount = uiState.media.size,
+                onPhotoCaptured = captureViewModel::addPhoto,
+                onVideoCaptured = captureViewModel::addVideo,
                 onDone = onBack,
             )
         } else {
@@ -106,24 +118,31 @@ fun CameraScreen(
 @Composable
 private fun CameraContent(
     stagedCount: Int,
-    onCaptured: (Uri) -> Unit,
+    onPhotoCaptured: (Uri) -> Unit,
+    onVideoCaptured: (Uri) -> Unit,
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val previewView = remember { PreviewView(context) }
-    // MAXIMIZE_QUALITY: capture the highest-quality frame; the shutter callback is async so
-    // preview never blocks (item 2: instant capture, max quality).
-    val imageCapture = remember {
-        ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .build()
+    // FIT_CENTER: show the whole frame instead of cropping to fill (fixes "too zoomed in").
+    val previewView = remember {
+        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FIT_CENTER }
     }
+    val imageCapture = remember {
+        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+    }
+    val videoCapture = remember {
+        VideoCapture.withOutput(Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).build())
+    }
+
+    var mode by remember { mutableStateOf(CameraMode.Photo) }
     var flashEnabled by remember { mutableStateOf(false) }
     var captureError by remember { mutableStateOf<String?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var zoomRatio by remember { mutableFloatStateOf(1f) }
     var maxZoom by remember { mutableFloatStateOf(1f) }
+    var recording by remember { mutableStateOf<Recording?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
 
     fun applyZoom(target: Float) {
         val clamped = target.coerceIn(1f, maxZoom)
@@ -131,37 +150,57 @@ private fun CameraContent(
         camera?.cameraControl?.setZoomRatio(clamped)
     }
 
-    LaunchedEffect(Unit) {
+    // Rebind whenever the mode changes (photo vs. video use case).
+    LaunchedEffect(mode) {
         val provider = context.getCameraProvider()
         val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
         provider.unbindAll()
-        camera = provider.bindToLifecycle(
-            lifecycleOwner,
-            CameraSelector.DEFAULT_BACK_CAMERA,
-            preview,
-            imageCapture,
-        )
+        val useCase = if (mode == CameraMode.Photo) imageCapture else videoCapture
+        camera = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, useCase)
         maxZoom = camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
+        applyZoom(zoomRatio)
     }
 
-    fun capture() {
+    fun capturePhoto() {
         imageCapture.flashMode =
             if (flashEnabled) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
         val file = File(context.cacheDir, "capture_${System.currentTimeMillis()}.jpg")
-        val options = ImageCapture.OutputFileOptions.Builder(file).build()
         imageCapture.takePicture(
-            options,
+            ImageCapture.OutputFileOptions.Builder(file).build(),
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    onCaptured(Uri.fromFile(file))
-                }
-
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) = onPhotoCaptured(Uri.fromFile(file))
                 override fun onError(exception: ImageCaptureException) {
                     captureError = exception.message ?: "Failed to capture photo."
                 }
             },
         )
+    }
+
+    fun toggleRecording() {
+        val current = recording
+        if (current != null) {
+            current.stop()
+            return
+        }
+        val file = File(context.cacheDir, "video_${System.currentTimeMillis()}.mp4")
+        val options = FileOutputOptions.Builder(file).build()
+        // No audio → no RECORD_AUDIO permission needed.
+        recording = videoCapture.output.prepareRecording(context, options)
+            .start(ContextCompat.getMainExecutor(context)) { event ->
+                when (event) {
+                    is VideoRecordEvent.Start -> isRecording = true
+                    is VideoRecordEvent.Finalize -> {
+                        isRecording = false
+                        recording = null
+                        if (event.hasError()) {
+                            captureError = "Video failed (code ${event.error})."
+                        } else {
+                            onVideoCaptured(Uri.fromFile(file))
+                        }
+                    }
+                }
+            }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -170,7 +209,6 @@ private fun CameraContent(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(maxZoom) {
-                    // Pinch-to-zoom.
                     detectTransformGestures { _, _, zoom, _ -> applyZoom(zoomRatio * zoom) }
                 },
         )
@@ -191,8 +229,10 @@ private fun CameraContent(
                 color = Color.White,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { flashEnabled = !flashEnabled }) {
-                Text(if (flashEnabled) "Flash On" else "Flash Off", color = Color.White)
+            if (mode == CameraMode.Photo) {
+                TextButton(onClick = { flashEnabled = !flashEnabled }) {
+                    Text(if (flashEnabled) "Flash On" else "Flash Off", color = Color.White)
+                }
             }
         }
 
@@ -209,44 +249,58 @@ private fun CameraContent(
                 Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
             }
 
-            if (maxZoom > 1f) {
+            if (maxZoom > 1f && !isRecording) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
                 ) {
                     OutlinedButton(onClick = { applyZoom(zoomRatio - 0.5f) }) { Text("–", color = Color.White) }
-                    Slider(
-                        value = zoomRatio,
-                        onValueChange = ::applyZoom,
-                        valueRange = 1f..maxZoom,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Slider(value = zoomRatio, onValueChange = ::applyZoom, valueRange = 1f..maxZoom, modifier = Modifier.weight(1f))
                     OutlinedButton(onClick = { applyZoom(zoomRatio + 0.5f) }) { Text("+", color = Color.White) }
                 }
                 Text("${"%.1f".format(zoomRatio)}×", color = Color.White)
             }
 
-            Text("Captured: $stagedCount", color = Color.White)
+            // Photo / Video mode toggle (hidden mid-recording).
+            if (!isRecording) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
+                    FilterChip(selected = mode == CameraMode.Photo, onClick = { mode = CameraMode.Photo }, label = { Text("Photo") })
+                    FilterChip(selected = mode == CameraMode.Video, onClick = { mode = CameraMode.Video }, label = { Text("Video") })
+                }
+            }
 
-            CaptureButton(onClick = ::capture)
+            Text("Collected: $stagedCount", color = Color.White)
 
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-                Text(if (stagedCount > 0) "Done ($stagedCount)" else "Done")
+            ShutterButton(
+                mode = mode,
+                isRecording = isRecording,
+                onClick = { if (mode == CameraMode.Photo) capturePhoto() else toggleRecording() },
+            )
+
+            if (!isRecording) {
+                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (stagedCount > 0) "Done ($stagedCount)" else "Done")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CaptureButton(onClick: () -> Unit) {
+private fun ShutterButton(mode: CameraMode, isRecording: Boolean, onClick: () -> Unit) {
+    val innerColor = when {
+        mode == CameraMode.Video && isRecording -> Color.Red
+        mode == CameraMode.Video -> Color(0xFFE53935)
+        else -> Color.White
+    }
     Box(
         modifier = Modifier
             .size(72.dp)
             .border(4.dp, Color.White, CircleShape)
             .padding(6.dp)
-            .background(Color.White, CircleShape)
-            .clickable(onClickLabel = "Capture", onClick = onClick),
+            .background(innerColor, CircleShape)
+            .clickable(onClickLabel = if (mode == CameraMode.Photo) "Capture" else "Record", onClick = onClick),
     )
 }
 
@@ -258,7 +312,7 @@ private fun PermissionRequest(onGrant: () -> Unit, onBack: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Camera access is needed to capture inventory photos.",
+            text = "Camera access is needed to capture inventory photos and videos.",
             color = Color.White,
             textAlign = TextAlign.Center,
         )

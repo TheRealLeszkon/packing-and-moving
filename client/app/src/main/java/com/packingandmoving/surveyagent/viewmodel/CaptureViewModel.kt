@@ -4,7 +4,8 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.packingandmoving.surveyagent.camera.toImagePart
+import com.packingandmoving.surveyagent.camera.isVideo
+import com.packingandmoving.surveyagent.camera.toMediaPart
 import com.packingandmoving.surveyagent.model.SurveyStatus
 import com.packingandmoving.surveyagent.repository.ApiResult
 import com.packingandmoving.surveyagent.repository.MediaRepository
@@ -19,26 +20,29 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-/** A photo staged for upload — from the camera (`file://`) or the gallery (`content://`). */
-data class StagedPhoto(val id: String, val uri: Uri)
+/** Media staged for upload — a photo or a video, from the camera or the gallery. */
+data class StagedMedia(val id: String, val uri: Uri, val isVideo: Boolean)
 
-/** Where the capture flow is: still adding photos, uploading+processing, or done. */
+/** Where the capture flow is: still adding media, uploading+processing, or done. */
 enum class CapturePhase { Editing, Working, Ready }
 
 data class CaptureUiState(
-    val photos: List<StagedPhoto> = emptyList(),
+    val media: List<StagedMedia> = emptyList(),
     val roomLocation: String = "",
     val phase: CapturePhase = CapturePhase.Editing,
     val processingStatus: SurveyStatus? = null,
     val errorMessage: String? = null,
-)
+) {
+    val photoCount: Int get() = media.count { !it.isVideo }
+    val videoCount: Int get() = media.count { it.isVideo }
+}
 
 /**
- * Owns the staged photos for one survey's capture session (graph-scoped, so the camera and
- * the review screen share it and photos survive rotation). Camera/gallery only *stage* URIs;
- * nothing hits the network until [uploadAndComplete], which uploads the batch, completes the
- * survey (→ processing), then polls status in place until it leaves `processing` — so the
- * review screen can show progress inline without a separate spinner screen.
+ * Owns the staged media for one survey's capture session (graph-scoped, so the camera and
+ * the review screen share it and media survives rotation). Camera/gallery only *stage* URIs;
+ * nothing hits the network until [uploadAndComplete], which uploads photos and videos to
+ * their respective endpoints, completes the survey (→ processing), then polls status in
+ * place until it leaves `processing`.
  */
 class CaptureViewModel(
     private val mediaRepository: MediaRepository,
@@ -50,43 +54,57 @@ class CaptureViewModel(
 
     fun onRoomLocationChange(value: String) = _uiState.update { it.copy(roomLocation = value) }
 
-    fun addPhotos(uris: List<Uri>) = _uiState.update { state ->
-        state.copy(photos = state.photos + uris.map { StagedPhoto(UUID.randomUUID().toString(), it) })
+    /** Stage picked gallery items; media type is inferred from each URI's content type. */
+    fun addMedia(uris: List<Uri>, resolver: ContentResolver) = _uiState.update { state ->
+        state.copy(media = state.media + uris.map { StagedMedia(UUID.randomUUID().toString(), it, it.isVideo(resolver)) })
     }
 
-    fun addPhoto(uri: Uri) = addPhotos(listOf(uri))
+    fun addPhoto(uri: Uri) = stage(uri, isVideo = false)
+    fun addVideo(uri: Uri) = stage(uri, isVideo = true)
 
-    fun removePhoto(id: String) = _uiState.update { state ->
-        state.copy(photos = state.photos.filterNot { it.id == id })
+    private fun stage(uri: Uri, isVideo: Boolean) = _uiState.update { state ->
+        state.copy(media = state.media + StagedMedia(UUID.randomUUID().toString(), uri, isVideo))
+    }
+
+    fun removeMedia(id: String) = _uiState.update { state ->
+        state.copy(media = state.media.filterNot { it.id == id })
     }
 
     fun consumeError() = _uiState.update { it.copy(errorMessage = null) }
 
     fun uploadAndComplete(surveyId: String, resolver: ContentResolver) {
-        val photos = _uiState.value.photos
-        if (photos.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Add at least one photo first.") }
+        val media = _uiState.value.media
+        if (media.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Add at least one photo or video first.") }
             return
         }
         if (_uiState.value.phase == CapturePhase.Working) return
 
         _uiState.update { it.copy(phase = CapturePhase.Working, errorMessage = null) }
         viewModelScope.launch {
-            val parts = withContext(Dispatchers.IO) {
-                photos.mapNotNull { runCatching { it.uri.toImagePart(resolver) }.getOrNull() }
+            val (imageParts, videoParts) = withContext(Dispatchers.IO) {
+                val images = media.filterNot { it.isVideo }
+                    .mapNotNull { runCatching { it.uri.toMediaPart(resolver) }.getOrNull() }
+                val videos = media.filter { it.isVideo }
+                    .mapNotNull { runCatching { it.uri.toMediaPart(resolver) }.getOrNull() }
+                images to videos
             }
-            if (parts.isEmpty()) {
-                fail("Could not read the selected photos.")
-                return@launch
+            if (imageParts.isEmpty() && videoParts.isEmpty()) {
+                return@launch fail("Could not read the selected media.")
             }
 
             val room = _uiState.value.roomLocation.trim().ifBlank { null }
-            when (val upload = mediaRepository.uploadImages(surveyId, parts, room)) {
-                is ApiResult.Failure -> return@launch fail(upload.error.message)
-                is ApiResult.Success -> Unit
+            if (imageParts.isNotEmpty()) {
+                val result = mediaRepository.uploadImages(surveyId, imageParts, room)
+                if (result is ApiResult.Failure) return@launch fail(result.error.message)
             }
+            if (videoParts.isNotEmpty()) {
+                val result = mediaRepository.uploadVideos(surveyId, videoParts, room)
+                if (result is ApiResult.Failure) return@launch fail(result.error.message)
+            }
+
             when (val complete = surveyRepository.complete(surveyId)) {
-                is ApiResult.Failure -> return@launch fail(complete.error.message)
+                is ApiResult.Failure -> fail(complete.error.message)
                 is ApiResult.Success -> pollUntilReady(surveyId)
             }
         }

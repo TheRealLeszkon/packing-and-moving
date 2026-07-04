@@ -26,18 +26,30 @@ suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutin
 }
 
 /**
- * Read an image [Uri] (camera `file://` or gallery `content://`) and wrap its bytes as a
- * multipart part named `files` — the field POST /surveys/{id}/images expects. The original
- * bytes are sent uncompressed; the backend resizes. Call off the main thread.
+ * Read a media [Uri] (camera `file://` or gallery `content://`, image or video) and wrap its
+ * bytes as a multipart part named `files` — the field both POST /surveys/{id}/images and
+ * .../videos expect. Original bytes are sent uncompressed; the backend processes. Call off
+ * the main thread.
  */
-fun Uri.toImagePart(resolver: ContentResolver): MultipartBody.Part {
+fun Uri.toMediaPart(resolver: ContentResolver): MultipartBody.Part {
     val bytes = resolver.openInputStream(this)?.use { it.readBytes() }
-        ?: error("Unable to read image at $this")
-    val mimeType = resolver.getType(this) ?: "image/jpeg"
-    val extension = if (mimeType.contains("png", ignoreCase = true)) "png" else "jpg"
+        ?: error("Unable to read media at $this")
+    val mimeType = resolver.getType(this) ?: "application/octet-stream"
     return MultipartBody.Part.createFormData(
         name = "files",
-        filename = "upload_${System.currentTimeMillis()}_${hashCode()}.$extension",
+        filename = "upload_${System.currentTimeMillis()}_${hashCode()}.${mimeType.fileExtension()}",
         body = bytes.toRequestBody(mimeType.toMediaTypeOrNull()),
     )
+}
+
+/** Whether a [Uri]'s content type is a video (drives image vs. video upload endpoint). */
+fun Uri.isVideo(resolver: ContentResolver): Boolean =
+    resolver.getType(this)?.startsWith("video", ignoreCase = true) == true
+
+private fun String.fileExtension(): String = when {
+    contains("png", ignoreCase = true) -> "png"
+    contains("mp4", ignoreCase = true) -> "mp4"
+    contains("quicktime", ignoreCase = true) || contains("mov", ignoreCase = true) -> "mov"
+    startsWith("video", ignoreCase = true) -> "mp4"
+    else -> "jpg"
 }

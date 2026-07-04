@@ -8,6 +8,7 @@ import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import coil3.video.VideoFrameDecoder
 import com.packingandmoving.surveyagent.api.NetworkModule
 import kotlinx.coroutines.runBlocking
 import okio.Path.Companion.toOkioPath
@@ -27,7 +28,10 @@ class SurveyAgentApp : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
-            .components { add(OkHttpNetworkFetcherFactory()) }
+            .components {
+                add(OkHttpNetworkFetcherFactory())
+                add(VideoFrameDecoder.Factory()) // render a frame as the thumbnail for video URIs
+            }
             .crossfade(true)
             .memoryCache {
                 MemoryCache.Builder().maxSizePercent(context, 0.25).build()

@@ -94,11 +94,6 @@ fun SurveyNavHost(
             val route = entry.toRoute<Camera>()
             CameraScreen(
                 surveyId = route.surveyId,
-                onFinishCapture = { id ->
-                    navController.navigate(Processing(id)) {
-                        popUpTo(Camera(id)) { inclusive = true }
-                    }
-                },
                 onBack = { navController.popBackStack() },
             )
         }

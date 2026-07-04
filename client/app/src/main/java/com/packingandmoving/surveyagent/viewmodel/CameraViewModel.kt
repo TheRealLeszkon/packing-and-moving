@@ -30,6 +30,9 @@ class CameraViewModel(private val mediaRepository: MediaRepository) : ViewModel(
 
     fun onRoomLocationChange(value: String) = _uiState.update { it.copy(roomLocation = value) }
 
+    /** Report a CameraX capture failure (before any upload happens). */
+    fun onCaptureError(message: String) = _uiState.update { it.copy(errorMessage = message) }
+
     fun uploadImages(surveyId: String, files: List<MultipartBody.Part>) =
         upload { mediaRepository.uploadImages(surveyId, files, roomLocationOrNull()) }
 

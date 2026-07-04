@@ -8,7 +8,9 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.models.enums import SurveyStatus
+from app.models.ai_analysis_run import AIAnalysisRun
+from app.models.enums import AIRunStatus, ProcessingStatus, SurveyStatus
+from app.models.media import Media
 from app.models.survey import Survey
 from app.models.survey_item import SurveyItem
 from app.repositories.base import BaseRepository
@@ -31,6 +33,34 @@ class SurveyRepository(BaseRepository[Survey]):
             .scalars()
             .all()
         )
+
+    async def count_unfinished_media(self, survey_id: uuid.UUID) -> int:
+        """Media still pending/processing for the survey (drives the progress stage)."""
+        return (
+            await self.session.execute(
+                select(func.count())
+                .select_from(Media)
+                .where(
+                    Media.survey_id == survey_id,
+                    Media.processing_status.in_(
+                        [ProcessingStatus.PENDING, ProcessingStatus.PROCESSING]
+                    ),
+                )
+            )
+        ).scalar_one()
+
+    async def has_pending_ai_run(self, survey_id: uuid.UUID) -> bool:
+        """Whether an AI analysis run is queued/in-flight for the survey."""
+        return (
+            await self.session.execute(
+                select(AIAnalysisRun.id)
+                .where(
+                    AIAnalysisRun.survey_id == survey_id,
+                    AIAnalysisRun.status == AIRunStatus.PENDING,
+                )
+                .limit(1)
+            )
+        ).first() is not None
 
     async def list_for_customer(
         self, customer_id: uuid.UUID, *, limit: int, offset: int

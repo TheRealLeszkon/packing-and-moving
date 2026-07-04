@@ -6,8 +6,11 @@ processing (resize, frame extraction, AI) is picked up from those ledger rows by
 the Phase 5 worker; here we only record that work is due.
 
 Uploads are gated: only the *assigned surveyor* may upload, and only while the
-survey is IN_PROGRESS. Storage writes are rolled back (deleted) if the request
-fails partway, so a failed multi-file upload leaves no orphaned objects.
+survey is in a capture-or-review state (IN_PROGRESS, READY_FOR_REVIEW,
+REVISION_REQUIRED) — so evidence can still be added while reviewing (e.g. to
+replace a blurry photo or back a manually-added item). Storage writes are rolled
+back (deleted) if the request fails partway, so a failed multi-file upload leaves
+no orphaned objects.
 """
 
 from __future__ import annotations
@@ -44,6 +47,15 @@ from app.workers.dispatch import ProcessingDispatcher
 logger = logging.getLogger(__name__)
 
 _TERMINAL = frozenset({SurveyStatus.APPROVED, SurveyStatus.COMPLETED, SurveyStatus.CANCELLED})
+# States in which the assigned surveyor may still upload media: on-site capture
+# plus the review states, so photos can be added/replaced while reviewing.
+_UPLOADABLE = frozenset(
+    {
+        SurveyStatus.IN_PROGRESS,
+        SurveyStatus.READY_FOR_REVIEW,
+        SurveyStatus.REVISION_REQUIRED,
+    }
+)
 
 
 class MediaService:
@@ -136,8 +148,10 @@ class MediaService:
             raise NotFoundError("Survey not found.")
         if survey.surveyor_id != surveyor.id:
             raise AuthorizationError("You are not the assigned surveyor for this survey.")
-        if survey.status is not SurveyStatus.IN_PROGRESS:
-            raise ConflictError("Media can only be uploaded while the survey is in progress.")
+        if survey.status not in _UPLOADABLE:
+            raise ConflictError(
+                "Media can only be uploaded while the survey is in progress or under review."
+            )
         return survey
 
     async def _store_all(

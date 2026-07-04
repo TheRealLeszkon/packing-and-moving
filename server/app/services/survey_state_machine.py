@@ -10,6 +10,7 @@ Legal graph (● start ○ terminal):
     ● SCHEDULED ──accept(surveyor)──▶ ASSIGNED ──start──▶ IN_PROGRESS
       IN_PROGRESS ──complete──▶ PROCESSING ──(system)──▶ READY_FOR_REVIEW
       READY_FOR_REVIEW ──submit──▶ AWAITING_CUSTOMER_APPROVAL
+      READY_FOR_REVIEW / REVISION_REQUIRED ──reanalyze──▶ PROCESSING  (re-run AI)
       AWAITING_CUSTOMER_APPROVAL ──approve──▶ APPROVED ○
       AWAITING_CUSTOMER_APPROVAL ──reject──▶ REVISION_REQUIRED
       REVISION_REQUIRED ──start──▶ IN_PROGRESS      (re-capture media)
@@ -32,6 +33,7 @@ class SurveyAction(StrEnum):
     ACCEPT = "accept"
     START = "start"
     COMPLETE = "complete"
+    REANALYZE = "reanalyze"  # surveyor re-runs AI on a survey under review
     PROCESSING_COMPLETE = "processing_complete"  # performed by the pipeline (system)
     SUBMIT = "submit"
     APPROVE = "approve"
@@ -76,6 +78,11 @@ TRANSITIONS: dict[SurveyAction, Transition] = {
     ),
     SurveyAction.COMPLETE: Transition(
         frozenset({SurveyStatus.IN_PROGRESS}),
+        SurveyStatus.PROCESSING,
+        ActorRequirement.ASSIGNED_SURVEYOR,
+    ),
+    SurveyAction.REANALYZE: Transition(
+        frozenset({SurveyStatus.READY_FOR_REVIEW, SurveyStatus.REVISION_REQUIRED}),
         SurveyStatus.PROCESSING,
         ActorRequirement.ASSIGNED_SURVEYOR,
     ),

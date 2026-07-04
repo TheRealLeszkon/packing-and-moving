@@ -25,6 +25,8 @@ from app.schemas.item import (
 from app.schemas.pagination import Page, PageParams
 from app.schemas.survey import (
     CancelRequest,
+    ReanalyzeRequest,
+    ReanalyzeResponse,
     RejectRequest,
     SurveyCreate,
     SurveyResponse,
@@ -96,6 +98,7 @@ async def survey_status(
             id=survey.id,
             status=survey.status,
             available_actions=[a.value for a in available_actions(survey, user)],
+            processing_stage=await service.processing_stage(survey),
         )
     )
 
@@ -175,6 +178,25 @@ async def complete_survey(
     survey_id: uuid.UUID, user: CurrentUser, service: SurveyServiceDep
 ) -> SuccessResponse[SurveyResponse]:
     return _one(await service.perform(user, survey_id, SurveyAction.COMPLETE))
+
+
+@router.post(
+    "/{survey_id}/reanalyze",
+    response_model=SuccessResponse[ReanalyzeResponse],
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Surveyor: re-run AI analysis on a survey under review",
+)
+async def reanalyze_survey(
+    survey_id: uuid.UUID,
+    user: CurrentUser,
+    service: SurveyServiceDep,
+    payload: ReanalyzeRequest | None = None,
+) -> SuccessResponse[ReanalyzeResponse]:
+    mode = (payload or ReanalyzeRequest()).mode
+    survey, job_ids = await service.reanalyze(user, survey_id, mode)
+    return SuccessResponse(
+        data=ReanalyzeResponse(survey_id=survey.id, status=survey.status, job_ids=job_ids)
+    )
 
 
 @router.post(

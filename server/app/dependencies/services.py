@@ -24,7 +24,7 @@ from app.workers.dispatch import get_dispatcher
 
 
 def get_survey_service(session: SessionDep) -> SurveyService:
-    return SurveyService(SurveyRepository(session))
+    return SurveyService(SurveyRepository(session), dispatcher=get_dispatcher())
 
 
 SurveyServiceDep = Annotated[SurveyService, Depends(get_survey_service)]

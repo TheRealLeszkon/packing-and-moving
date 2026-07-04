@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm.exc import StaleDataError
@@ -102,7 +103,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=error_body(
                 "validation_error",
                 "The request failed validation.",
-                {"errors": exc.errors()},
+                # Encode first: pydantic errors can embed non-JSON-native inputs
+                # (e.g. a Decimal that failed a range check) that json.dumps rejects.
+                {"errors": jsonable_encoder(exc.errors())},
             ),
         )
 

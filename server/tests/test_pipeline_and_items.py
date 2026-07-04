@@ -7,7 +7,7 @@ import uuid
 from httpx import AsyncClient
 
 from tests.conftest import Actor
-from tests.helpers import drive_to_review
+from tests.helpers import create_survey, drive_to_review, upload_image
 
 
 async def test_ai_generates_items_and_marks_ready(
@@ -110,3 +110,81 @@ async def test_item_edit_authorization(
     # invalid media reference rejected
     assert (await api.patch(f"/survey-items/{item_id}", headers=surveyor.headers,
                             json={"media_ids": [str(uuid.uuid4())]})).status_code == 422
+
+
+async def test_complete_dispatches_finalize(
+    api: AsyncClient, customer: Actor, surveyor: Actor
+) -> None:
+    """Completing capture must dispatch a finalize for the survey.
+
+    Regression guard for the wiring: if the COMPLETE transition stops registering
+    the finalize dispatch, a survey whose media already finished would hang in
+    PROCESSING forever (analysis is only otherwise triggered by a media job
+    finishing while PROCESSING).
+    """
+    from app.dependencies.database import get_session
+    from app.dependencies.services import get_survey_service
+    from app.main import app
+    from app.repositories.survey import SurveyRepository
+    from app.services.survey import SurveyService
+
+    calls: list[uuid.UUID] = []
+
+    class _Recorder:
+        def dispatch(self, *args: object) -> None: ...
+        def dispatch_ai(self, *args: object) -> None: ...
+        def dispatch_finalize(self, survey_id: uuid.UUID) -> None:
+            calls.append(survey_id)
+
+    # Override the service so completion runs with a recording dispatcher.
+    async def _survey_service_dep():
+        # Reuse the request session via the normal dependency graph.
+        async for session in get_session():
+            yield SurveyService(SurveyRepository(session), dispatcher=_Recorder())
+
+    app.dependency_overrides[get_survey_service] = _survey_service_dep
+    try:
+        sid = await create_survey(api, customer)
+        await api.post(f"/survey-requests/{sid}/accept", headers=surveyor.headers)
+        await api.post(f"/surveys/{sid}/start", headers=surveyor.headers)
+        resp = await api.post(f"/surveys/{sid}/complete", headers=surveyor.headers)
+        assert resp.status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_survey_service, None)
+
+    assert calls == [uuid.UUID(sid)]
+
+
+async def test_media_finished_before_complete_still_reaches_review(
+    api: AsyncClient, customer: Actor, surveyor: Actor
+) -> None:
+    """Regression: media that finishes BEFORE the surveyor completes must not hang.
+
+    Reproduces the original bug's ordering (image processed while still
+    IN_PROGRESS, so the media-completion path can't queue analysis), then runs the
+    finalize the COMPLETE transition dispatches — the survey must reach review.
+    """
+    import asyncio
+
+    from app.workers.pipeline import run_ai_analysis, run_finalize, run_image_pipeline
+
+    sid = await create_survey(api, customer)
+    await api.post(f"/survey-requests/{sid}/accept", headers=surveyor.headers)
+    await api.post(f"/surveys/{sid}/start", headers=surveyor.headers)
+    img_id = await upload_image(api, surveyor, sid)
+
+    # Media completes while the survey is still IN_PROGRESS.
+    await asyncio.to_thread(run_image_pipeline, uuid.UUID(img_id))
+    still = (await api.get(f"/surveys/{sid}/status", headers=surveyor.headers)).json()["data"]
+    assert still["status"] == "in_progress"
+
+    # Complete -> PROCESSING; then the dispatched finalize + AI (dispatch is a no-op
+    # in tests, so drive the actors directly).
+    await api.post(f"/surveys/{sid}/complete", headers=surveyor.headers)
+    await asyncio.to_thread(run_finalize, uuid.UUID(sid))
+    await asyncio.to_thread(run_ai_analysis, uuid.UUID(sid))
+
+    status = (await api.get(f"/surveys/{sid}/status", headers=surveyor.headers)).json()["data"]
+    assert status["status"] == "ready_for_review"
+    items = (await api.get(f"/surveys/{sid}/items", headers=surveyor.headers)).json()["data"]
+    assert items["count"] >= 1

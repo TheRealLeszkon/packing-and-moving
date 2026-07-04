@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import SurveyStatus
+from app.models.enums import ProcessingStage, ReanalysisMode, SurveyStatus
 
 
 class SurveyCreate(BaseModel):
@@ -43,6 +43,20 @@ class SurveyStatusResponse(BaseModel):
     id: uuid.UUID
     status: SurveyStatus
     available_actions: list[str]
+    # Observed pipeline stage while ``status`` is PROCESSING; null otherwise.
+    processing_stage: ProcessingStage | None = None
+
+
+class ReanalyzeRequest(BaseModel):
+    """Re-run AI analysis on a survey under review."""
+
+    mode: ReanalysisMode = ReanalysisMode.ALL
+
+
+class ReanalyzeResponse(BaseModel):
+    survey_id: uuid.UUID
+    status: SurveyStatus
+    job_ids: list[uuid.UUID]
 
 
 class RejectRequest(BaseModel):

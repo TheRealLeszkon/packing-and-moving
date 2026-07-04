@@ -24,6 +24,10 @@ class ProcessingDispatcher(Protocol):
 
     def dispatch_ai(self, survey_id: uuid.UUID) -> None: ...
 
+    def dispatch_finalize(self, survey_id: uuid.UUID) -> None: ...
+
+    def dispatch_reanalyze(self, survey_id: uuid.UUID, mode: str) -> None: ...
+
 
 class DramatiqDispatcher:
     """Sends the matching actor message to the broker (Redis)."""
@@ -40,6 +44,16 @@ class DramatiqDispatcher:
 
         analyze_survey.send(str(survey_id))
 
+    def dispatch_finalize(self, survey_id: uuid.UUID) -> None:
+        from app.workers.actors import finalize_survey
+
+        finalize_survey.send(str(survey_id))
+
+    def dispatch_reanalyze(self, survey_id: uuid.UUID, mode: str) -> None:
+        from app.workers.actors import reanalyze_survey
+
+        reanalyze_survey.send(str(survey_id), mode)
+
 
 class NullDispatcher:
     """No-op dispatcher for environments without a worker (local/tests)."""
@@ -49,6 +63,14 @@ class NullDispatcher:
 
     def dispatch_ai(self, survey_id: uuid.UUID) -> None:
         logger.info("ai_dispatch_skipped", extra={"survey_id": str(survey_id)})
+
+    def dispatch_finalize(self, survey_id: uuid.UUID) -> None:
+        logger.info("finalize_dispatch_skipped", extra={"survey_id": str(survey_id)})
+
+    def dispatch_reanalyze(self, survey_id: uuid.UUID, mode: str) -> None:
+        logger.info(
+            "reanalyze_dispatch_skipped", extra={"survey_id": str(survey_id), "mode": mode}
+        )
 
 
 @lru_cache

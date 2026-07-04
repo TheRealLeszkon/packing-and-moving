@@ -11,9 +11,20 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from functools import partial
 
+from app.ai.prompts import ACTIVE_PROMPT_VERSION
+from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError
-from app.models.enums import SurveyStatus, UserRole
+from app.db.session import register_after_commit
+from app.models.ai_analysis_run import AIAnalysisRun
+from app.models.enums import (
+    AIRunStatus,
+    ProcessingStage,
+    ReanalysisMode,
+    SurveyStatus,
+    UserRole,
+)
 from app.models.survey import Survey
 from app.models.survey_history import SurveyHistory
 from app.models.survey_item import SurveyItem
@@ -26,12 +37,16 @@ from app.services.survey_state_machine import (
     resolve_transition,
 )
 from app.services.visibility import can_view_survey
+from app.workers.dispatch import ProcessingDispatcher
 
 
 class SurveyService:
-    def __init__(self, surveys: SurveyRepository) -> None:
+    def __init__(
+        self, surveys: SurveyRepository, dispatcher: ProcessingDispatcher | None = None
+    ) -> None:
         self._surveys = surveys
         self._session = surveys.session
+        self._dispatcher = dispatcher
 
     # ---- creation ---------------------------------------------------------
     async def create(self, customer: User, data: SurveyCreate) -> Survey:
@@ -68,6 +83,21 @@ class SurveyService:
         return await self._surveys.list_for_customer(
             user.id, limit=params.limit, offset=params.offset
         )
+
+    async def processing_stage(self, survey: Survey) -> ProcessingStage | None:
+        """Observed pipeline stage for a PROCESSING survey (else ``None``).
+
+        Derived from real state: media still resizing/extracting → MEDIA_PROCESSING;
+        otherwise a queued AI run → AI_ANALYSIS; otherwise FINALIZING (analysis done,
+        advancing to review).
+        """
+        if survey.status is not SurveyStatus.PROCESSING:
+            return None
+        if await self._surveys.count_unfinished_media(survey.id):
+            return ProcessingStage.MEDIA_PROCESSING
+        if await self._surveys.has_pending_ai_run(survey.id):
+            return ProcessingStage.AI_ANALYSIS
+        return ProcessingStage.FINALIZING
 
     async def list_items(self, user: User, survey_id: uuid.UUID) -> Sequence[SurveyItem]:
         """Inventory items for a survey the caller may view (AI-generated + manual)."""
@@ -114,6 +144,34 @@ class SurveyService:
         survey = await self.get_visible(user, survey_id)
         return await self._apply(survey, action, user, reason=reason)
 
+    async def reanalyze(
+        self, user: User, survey_id: uuid.UUID, mode: ReanalysisMode
+    ) -> tuple[Survey, list[uuid.UUID]]:
+        """Send a reviewed survey back to PROCESSING and queue a fresh AI run.
+
+        Validates the ``REANALYZE`` transition (assigned surveyor, review state),
+        records a PENDING ``AIAnalysisRun`` as the processing job, and dispatches
+        the worker (post-commit) to run analysis in ``mode``. Returns the survey
+        and the created job id(s).
+        """
+        survey = await self.get_visible(user, survey_id)
+        await self._apply(survey, SurveyAction.REANALYZE, user)
+        run = AIAnalysisRun(
+            survey_id=survey.id,
+            provider=settings.ai_provider.value,
+            model=settings.gemini_model,
+            prompt_version=ACTIVE_PROMPT_VERSION,
+            status=AIRunStatus.PENDING,
+        )
+        self._session.add(run)
+        await self._session.flush()  # assign run.id for the response + dispatch
+        if self._dispatcher is not None:
+            register_after_commit(
+                self._session,
+                partial(self._dispatcher.dispatch_reanalyze, survey.id, mode.value),
+            )
+        return survey, [run.id]
+
     async def mark_processing_complete(self, survey_id: uuid.UUID) -> Survey:
         """System transition PROCESSING -> READY_FOR_REVIEW (called by the pipeline)."""
         survey = await self._surveys.get(survey_id)
@@ -140,6 +198,14 @@ class SurveyService:
         self._record_history(survey, previous, target, user, reason)
         # Flush now so an optimistic-lock (version_id) conflict raises here.
         await self._session.flush()
+        # Completing capture moves the survey into PROCESSING. Media jobs that
+        # already finished won't re-trigger analysis, so kick a finalize check
+        # (post-commit, once the status change is durable) to start AI or advance
+        # straight to review. Idempotent worker-side.
+        if action is SurveyAction.COMPLETE and self._dispatcher is not None:
+            register_after_commit(
+                self._session, partial(self._dispatcher.dispatch_finalize, survey.id)
+            )
         return survey
 
     def _record_history(

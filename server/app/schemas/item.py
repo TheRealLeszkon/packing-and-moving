@@ -123,6 +123,8 @@ class SurveyItemUpdate(BaseModel):
     estimated_value: Decimal | None = _VALUE
     condition: ItemCondition | None = None
     remarks: str | None = Field(default=None, max_length=4000)
+    # Surveyors may adjust the AI's confidence after reviewing the item (0.0–1.0).
+    confidence_score: Decimal | None = _CONFIDENCE
     media_ids: list[uuid.UUID] | None = None
 
 

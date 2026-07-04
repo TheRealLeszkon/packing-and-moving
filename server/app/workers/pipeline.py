@@ -22,6 +22,7 @@ import logging
 import os
 import tempfile
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -41,6 +42,7 @@ from app.models.enums import (
     JobType,
     MediaType,
     ProcessingStatus,
+    ReanalysisMode,
     SurveyStatus,
 )
 from app.models.media import Media
@@ -327,6 +329,24 @@ def _finalize_media(db: Session, survey_id: uuid.UUID) -> uuid.UUID | None:
     return survey_id
 
 
+def run_finalize(survey_id: uuid.UUID) -> None:
+    """Re-run the finalize check for a survey the surveyor just completed.
+
+    Media jobs that finished *before* the survey entered PROCESSING left no one
+    to start analysis (``_finalize_media`` no-ops off PROCESSING), so completion
+    would hang. Dispatched after the COMPLETE transition commits, this closes
+    that gap: it queues AI analysis if all media is done, advances straight to
+    review if nothing is analysable, or no-ops if media is still outstanding
+    (the media-completion path will finalize then). Idempotent — safe if a media
+    job and completion race.
+    """
+    ai_survey_id: uuid.UUID | None = None
+    with worker_session() as db:
+        ai_survey_id = _finalize_media(db, survey_id)
+    if ai_survey_id is not None:
+        get_dispatcher().dispatch_ai(ai_survey_id)
+
+
 # --------------------------------------------------------------------------- #
 # AI analysis pipeline
 # --------------------------------------------------------------------------- #
@@ -338,6 +358,36 @@ def run_ai_analysis(survey_id: uuid.UUID) -> None:
     lock — re-checking the survey is still PROCESSING so a duplicate delivery
     cannot double-persist. On provider failure the run is recorded FAILED and the
     survey is still unblocked to READY_FOR_REVIEW for manual entry.
+    """
+    _execute_analysis(survey_id, select_media=_all_analysable_refs, replace_ai_items=False)
+
+
+def run_reanalysis(survey_id: uuid.UUID, mode: ReanalysisMode) -> None:
+    """Re-run AI analysis on a survey the surveyor sent back to PROCESSING.
+
+    ``ALL`` re-analyses every processed media and *replaces* the existing
+    AI-generated items (manual items are kept); ``NEW_ONLY`` analyses just the
+    media added since the last succeeded run and *appends* to the inventory.
+    Shares the same claim/analyse/persist core as :func:`run_ai_analysis`.
+    """
+    if mode is ReanalysisMode.NEW_ONLY:
+        _execute_analysis(survey_id, select_media=_new_analysable_refs, replace_ai_items=False)
+    else:
+        _execute_analysis(survey_id, select_media=_all_analysable_refs, replace_ai_items=True)
+
+
+def _execute_analysis(
+    survey_id: uuid.UUID,
+    *,
+    select_media: Callable[[Session, uuid.UUID], list[tuple[uuid.UUID, str]]],
+    replace_ai_items: bool,
+) -> None:
+    """Claim the survey's PENDING run, analyse ``select_media`` and persist items.
+
+    ``replace_ai_items`` deletes existing ``source="ai"`` items before persisting
+    (used by a full re-analysis so the inventory isn't duplicated); manual items
+    are always preserved. On provider failure nothing is deleted and the survey is
+    still unblocked to READY_FOR_REVIEW.
     """
     # ---- claim the pending run + snapshot the media to analyse ----
     with worker_session() as db:
@@ -355,19 +405,7 @@ def run_ai_analysis(survey_id: uuid.UUID) -> None:
         if run is None:
             return  # nothing queued
         run_id = run.id
-        media_refs = [
-            (m.id, m.processed_url)
-            for m in db.scalars(
-                select(Media)
-                .where(
-                    Media.survey_id == survey_id,
-                    Media.processing_status == ProcessingStatus.COMPLETED,
-                    Media.processed_url.is_not(None),
-                    Media.media_type.in_(_ANALYSABLE_MEDIA_TYPES),
-                )
-                .order_by(Media.upload_timestamp, Media.frame_number)
-            )
-        ][: settings.ai_max_images]
+        media_refs = select_media(db, survey_id)[: settings.ai_max_images]
 
     # ---- download bytes + call the provider (no DB transaction held) ----
     storage = get_storage()
@@ -403,6 +441,8 @@ def run_ai_analysis(survey_id: uuid.UUID) -> None:
             return
         run.request_media_count = len(media_ids)
         if result is not None:
+            if replace_ai_items:
+                _delete_ai_items(db, survey_id)
             _persist_items(db, survey_id, result, media_ids)
             run.status = AIRunStatus.SUCCEEDED
             run.model = result.model
@@ -420,6 +460,63 @@ def run_ai_analysis(survey_id: uuid.UUID) -> None:
             _transition_to_review(
                 db, survey, run_failed=True, reason="AI analysis failed; manual review"
             )
+
+
+def _all_analysable_refs(
+    db: Session, survey_id: uuid.UUID
+) -> list[tuple[uuid.UUID, str]]:
+    """All processed, analysable media for the survey, in analysis order."""
+    return [
+        (m.id, m.processed_url)
+        for m in db.scalars(
+            select(Media)
+            .where(
+                Media.survey_id == survey_id,
+                Media.processing_status == ProcessingStatus.COMPLETED,
+                Media.processed_url.is_not(None),
+                Media.media_type.in_(_ANALYSABLE_MEDIA_TYPES),
+            )
+            .order_by(Media.upload_timestamp, Media.frame_number)
+        )
+    ]
+
+
+def _new_analysable_refs(
+    db: Session, survey_id: uuid.UUID
+) -> list[tuple[uuid.UUID, str]]:
+    """Analysable media added since the last succeeded run (empty if none is new)."""
+    cutoff = db.scalar(
+        select(func.max(AIAnalysisRun.created_at)).where(
+            AIAnalysisRun.survey_id == survey_id,
+            AIAnalysisRun.status == AIRunStatus.SUCCEEDED,
+        )
+    )
+    if cutoff is None:
+        return _all_analysable_refs(db, survey_id)
+    return [
+        (m.id, m.processed_url)
+        for m in db.scalars(
+            select(Media)
+            .where(
+                Media.survey_id == survey_id,
+                Media.processing_status == ProcessingStatus.COMPLETED,
+                Media.processed_url.is_not(None),
+                Media.media_type.in_(_ANALYSABLE_MEDIA_TYPES),
+                Media.upload_timestamp > cutoff,
+            )
+            .order_by(Media.upload_timestamp, Media.frame_number)
+        )
+    ]
+
+
+def _delete_ai_items(db: Session, survey_id: uuid.UUID) -> None:
+    """Remove AI-generated items (keeping manual ones) before a full re-analysis."""
+    db.execute(
+        delete(SurveyItem).where(
+            SurveyItem.survey_id == survey_id,
+            SurveyItem.source == "ai",
+        )
+    )
 
 
 def _count_analysable_media(db: Session, survey_id: uuid.UUID) -> int:

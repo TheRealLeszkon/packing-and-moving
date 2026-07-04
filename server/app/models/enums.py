@@ -69,6 +69,27 @@ class AIRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class ReanalysisMode(StrEnum):
+    """Scope of a manual re-analysis (see the /reanalyze endpoint)."""
+
+    ALL = "all"            # re-analyse every processed media, replacing AI items
+    NEW_ONLY = "new_only"  # analyse only media added since the last succeeded run
+
+
+class ProcessingStage(StrEnum):
+    """Coarse, *observed* stage of a survey in PROCESSING (for client progress UI).
+
+    Derived on read from real pipeline state — the survey advances through media
+    processing, then AI analysis, then finalisation. These reflect steps the
+    pipeline genuinely performs (media resize/frame extraction, a single Gemini
+    call); it does not model finer AI sub-steps that don't exist as discrete work.
+    """
+
+    MEDIA_PROCESSING = "media_processing"  # resize / frame extraction still running
+    AI_ANALYSIS = "ai_analysis"            # media done; Gemini analysis pending
+    FINALIZING = "finalizing"              # analysis done; advancing to review
+
+
 class Difficulty(StrEnum):
     EASY = "easy"
     MEDIUM = "medium"

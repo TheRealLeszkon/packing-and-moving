@@ -20,6 +20,6 @@ val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     initializer { CameraViewModel(AppRepositories.media) }
     initializer { ProcessingViewModel(AppRepositories.survey) }
     initializer { AiReportViewModel(AppRepositories.item) }
-    initializer { ItemDetailViewModel(AppRepositories.item) }
+    initializer { ItemDetailViewModel(AppRepositories.item, AppRepositories.media) }
     initializer { SummaryViewModel(AppRepositories.survey) }
 }

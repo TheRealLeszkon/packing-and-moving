@@ -6,6 +6,7 @@ import com.packingandmoving.surveyagent.model.SurveyItem
 import com.packingandmoving.surveyagent.model.SurveyItemUpdate
 import com.packingandmoving.surveyagent.repository.ApiResult
 import com.packingandmoving.surveyagent.repository.ItemRepository
+import com.packingandmoving.surveyagent.repository.MediaRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,12 +29,16 @@ data class ItemDetailUiState(
     val fragile: Boolean = false,
     val needsDisassembly: Boolean = false,
     val remarks: String = "",
+    val imageUrls: List<String> = emptyList(),
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val errorMessage: String? = null,
 )
 
-class ItemDetailViewModel(private val itemRepository: ItemRepository) : ViewModel() {
+class ItemDetailViewModel(
+    private val itemRepository: ItemRepository,
+    private val mediaRepository: MediaRepository,
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ItemDetailUiState())
     val uiState: StateFlow<ItemDetailUiState> = _uiState.asStateFlow()
@@ -56,6 +61,7 @@ class ItemDetailViewModel(private val itemRepository: ItemRepository) : ViewMode
                         _uiState.update { it.copy(isLoading = false, errorMessage = "Item not found.") }
                     } else {
                         _uiState.update { seedForm(it, item) }
+                        loadImages(item.mediaIds)
                     }
                 }
                 is ApiResult.Failure ->
@@ -63,6 +69,18 @@ class ItemDetailViewModel(private val itemRepository: ItemRepository) : ViewMode
             }
         }
     }
+
+    /** Fetch each evidencing photo's short-lived signed URL for display (§11). */
+    private fun loadImages(mediaIds: List<String>) {
+        if (mediaIds.isEmpty()) return
+        viewModelScope.launch {
+            val urls = mediaIds.mapNotNull { itemMediaUrl(it) }
+            _uiState.update { it.copy(imageUrls = urls) }
+        }
+    }
+
+    private suspend fun itemMediaUrl(mediaId: String): String? =
+        (mediaRepository.getMedia(mediaId) as? ApiResult.Success)?.data?.url
 
     private fun seedForm(state: ItemDetailUiState, item: SurveyItem) = state.copy(
         isLoading = false,

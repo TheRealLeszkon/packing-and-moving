@@ -22,7 +22,6 @@ import com.packingandmoving.surveyagent.model.ReanalyzeResult
 import com.packingandmoving.surveyagent.model.SurveyStatusInfo
 import com.packingandmoving.surveyagent.model.SurveySummary
 import com.packingandmoving.surveyagent.model.TokenResponse
-import com.packingandmoving.surveyagent.model.RoleUpdate
 import com.packingandmoving.surveyagent.model.User
 import com.packingandmoving.surveyagent.model.UserUpdate
 import okhttp3.MultipartBody
@@ -65,9 +64,6 @@ interface SurveyAgentApi {
 
     @PUT("users/me")
     suspend fun updateMe(@Body body: UserUpdate): ApiEnvelope<User>
-
-    @POST("users/me/role")
-    suspend fun setMyRole(@Body body: RoleUpdate): ApiEnvelope<User>
 
     // ---- Surveys ----
     @POST("surveys")

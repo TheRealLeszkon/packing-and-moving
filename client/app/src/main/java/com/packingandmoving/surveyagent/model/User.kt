@@ -16,7 +16,3 @@ data class User(
 /** UserUpdate (PUT /users/me). */
 @Serializable
 data class UserUpdate(val name: String? = null)
-
-/** RoleUpdate (POST /users/me/role) — demo-only self-service role switch (customer/surveyor). */
-@Serializable
-data class RoleUpdate(val role: UserRole)

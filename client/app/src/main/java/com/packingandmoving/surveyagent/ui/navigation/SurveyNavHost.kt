@@ -13,9 +13,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.packingandmoving.surveyagent.api.NetworkModule
-import com.packingandmoving.surveyagent.auth.toUserRole
-import com.packingandmoving.surveyagent.repository.ApiResult
-import com.packingandmoving.surveyagent.repository.AppRepositories
 import com.packingandmoving.surveyagent.ui.screens.CameraScreen
 import com.packingandmoving.surveyagent.ui.screens.CreateSurveyScreen
 import com.packingandmoving.surveyagent.ui.screens.HomeScreen
@@ -64,18 +61,9 @@ fun SurveyNavHost(
 
         composable<RoleSelect> {
             RoleSelectScreen(
-                // Best-effort backend role switch (demo self-role switch): try to flip the
-                // account role, but ALWAYS persist the workspace choice + enter the app so a
-                // server that lacks the endpoint (or has the flag off) can never lock the user
-                // out. If the switch failed, surface a non-blocking warning on the way in.
                 onRoleChosen = { role ->
-                    val result = AppRepositories.user.setRole(role.toUserRole())
                     NetworkModule.sessionManager.setRole(role)
                     navController.navigate(Home) { popUpTo(0) { inclusive = true } }
-                    (result as? ApiResult.Failure)?.let {
-                        "Signed in, but the backend role switch failed (${it.error.message}). " +
-                            "Surveyor actions may be blocked until the server is updated."
-                    }
                 },
             )
         }

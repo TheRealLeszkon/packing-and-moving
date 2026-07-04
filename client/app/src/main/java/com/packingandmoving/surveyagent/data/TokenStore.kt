@@ -36,8 +36,16 @@ class TokenStore(private val context: Context) {
         context.authDataStore.edit { it.clear() }
     }
 
+    /** The chosen workspace role (item 7), remembered across sessions until changed/cleared. */
+    suspend fun readRole(): String? = context.authDataStore.data.first()[APP_ROLE]
+
+    suspend fun saveRole(role: String) {
+        context.authDataStore.edit { it[APP_ROLE] = role }
+    }
+
     private companion object {
         val ACCESS_TOKEN = stringPreferencesKey("access_token")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
+        val APP_ROLE = stringPreferencesKey("app_role")
     }
 }

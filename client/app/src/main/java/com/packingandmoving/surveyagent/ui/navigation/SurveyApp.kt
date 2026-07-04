@@ -30,7 +30,11 @@ fun SurveyApp(
 ) {
     val session = NetworkModule.sessionManager
     val startDestination: Any = remember {
-        if (session.currentAccessToken() != null) Home else SignIn
+        when {
+            session.currentAccessToken() == null -> SignIn
+            session.selectedRole.value == null -> RoleSelect
+            else -> Home
+        }
     }
     val authState by session.authState.collectAsState()
 

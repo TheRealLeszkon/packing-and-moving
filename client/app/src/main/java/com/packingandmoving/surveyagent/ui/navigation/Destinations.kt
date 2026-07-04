@@ -8,6 +8,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 object SignIn
 
+// Post-login workspace-role choice (item 7).
+@Serializable
+object RoleSelect
+
 // Bottom-navigation top-level destinations.
 @Serializable
 object Home

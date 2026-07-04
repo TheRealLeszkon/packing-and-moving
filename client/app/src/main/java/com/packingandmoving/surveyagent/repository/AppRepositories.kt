@@ -8,7 +8,8 @@ import com.packingandmoving.surveyagent.api.NetworkModule
  * repositories from here (Phase 5) — no DI framework is used to keep wiring explicit.
  */
 object AppRepositories {
-    val auth: AuthRepository = AuthRepository(NetworkModule.api, NetworkModule.tokenProvider)
+    val auth: AuthRepository =
+        AuthRepository(NetworkModule.api, NetworkModule.authApi, NetworkModule.sessionManager)
     val user: UserRepository = UserRepository(NetworkModule.api)
     val survey: SurveyRepository = SurveyRepository(NetworkModule.api)
     val item: ItemRepository = ItemRepository(NetworkModule.api)

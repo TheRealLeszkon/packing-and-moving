@@ -28,11 +28,12 @@ import com.packingandmoving.surveyagent.ui.screens.SurveysScreen
 @Composable
 fun SurveyNavHost(
     navController: NavHostController,
+    startDestination: Any,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
         navController = navController,
-        startDestination = SignIn,
+        startDestination = startDestination,
         modifier = modifier,
         enterTransition = { slideIntoContainer(SlideDirection.Start) + fadeIn() },
         exitTransition = { slideOutOfContainer(SlideDirection.Start) + fadeOut() },

@@ -1,6 +1,10 @@
 package com.packingandmoving.surveyagent.api
 
+import android.content.Context
 import com.packingandmoving.surveyagent.BuildConfig
+import com.packingandmoving.surveyagent.auth.SessionManager
+import com.packingandmoving.surveyagent.auth.TokenAuthenticator
+import com.packingandmoving.surveyagent.data.TokenStore
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNamingStrategy
@@ -12,13 +16,12 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * Composition root for networking. Builds a single OkHttp/Retrofit stack against
- * [BuildConfig.API_BASE_URL] (configuration-driven, never hardcoded).
+ * Composition root for networking. Built once from the Application via [init] against
+ * [BuildConfig.API_BASE_URL] (configuration-driven, never hardcoded). Exposes two Retrofit
+ * surfaces: [authApi] on a bare client (no bearer, used for sign-in/refresh/logout so the
+ * refresh call can't recurse) and [api] on an authenticated client (bearer + 401 refresh).
  */
 object NetworkModule {
-
-    /** Shared token holder; the auth layer updates it after sign-in/refresh. */
-    val tokenProvider: InMemoryTokenProvider = InMemoryTokenProvider()
 
     @OptIn(ExperimentalSerializationApi::class)
     val json: Json = Json {
@@ -30,8 +33,32 @@ object NetworkModule {
         coerceInputValues = true
     }
 
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(AuthInterceptor(tokenProvider))
+    lateinit var sessionManager: SessionManager
+        private set
+
+    /** Authenticated surface for everything that needs a bearer token. */
+    lateinit var api: SurveyAgentApi
+        private set
+
+    /** Bare surface for the auth endpoints (no bearer, no refresh-on-401). */
+    lateinit var authApi: SurveyAgentApi
+        private set
+
+    fun init(context: Context) {
+        if (::api.isInitialized) return
+
+        sessionManager = SessionManager(TokenStore(context.applicationContext))
+
+        authApi = buildRetrofit(bareClient()).create(SurveyAgentApi::class.java)
+
+        val authedClient = bareClient().newBuilder()
+            .addInterceptor(AuthInterceptor(sessionManager))
+            .authenticator(TokenAuthenticator(sessionManager) { authApi })
+            .build()
+        api = buildRetrofit(authedClient).create(SurveyAgentApi::class.java)
+    }
+
+    private fun bareClient(): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(
             HttpLoggingInterceptor().apply {
                 level = if (BuildConfig.DEBUG) {
@@ -45,10 +72,9 @@ object NetworkModule {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    val api: SurveyAgentApi = Retrofit.Builder()
+    private fun buildRetrofit(client: OkHttpClient): Retrofit = Retrofit.Builder()
         .baseUrl(BuildConfig.API_BASE_URL)
-        .client(okHttpClient)
+        .client(client)
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
-        .create(SurveyAgentApi::class.java)
 }

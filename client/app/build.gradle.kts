@@ -15,6 +15,11 @@ val localProperties = Properties().apply {
 }
 val apiBaseUrl: String = localProperties.getProperty("API_BASE_URL") ?: "http://10.0.2.2:8000/"
 
+// Google Sign-In server client ID (the ID token's audience). This is a public OAuth
+// client ID, not a secret; the backend accepts this project's web + mobile client IDs.
+val googleServerClientId: String = localProperties.getProperty("GOOGLE_SERVER_CLIENT_ID")
+    ?: "39935125036-v31f3po8a41i2s78ce47cmkg0qkp41v6.apps.googleusercontent.com"
+
 android {
     namespace = "com.packingandmoving.surveyagent"
     compileSdk {
@@ -33,6 +38,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
     }
 
     buildTypes {
@@ -94,6 +100,12 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+
+    // Authentication (Google Sign-In via Credential Manager) + token storage
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
+    implementation(libs.androidx.datastore.preferences)
 
     // Test
     testImplementation(libs.junit)

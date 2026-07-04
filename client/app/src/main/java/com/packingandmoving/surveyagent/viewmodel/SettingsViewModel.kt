@@ -45,12 +45,12 @@ class SettingsViewModel(
     }
 
     /**
-     * Revokes the given refresh token. The token itself comes from secure storage wired
-     * in the authentication phase; the screen supplies it here.
+     * Signs out: revokes the session's refresh token server-side (best effort) and clears
+     * local tokens. Sign-out succeeds even if the network call fails.
      */
-    fun logout(refreshToken: String) {
+    fun logout() {
         viewModelScope.launch {
-            when (val result = authRepository.logout(refreshToken)) {
+            when (val result = authRepository.logout()) {
                 is ApiResult.Success ->
                     _uiState.update { it.copy(isLoggedOut = true) }
                 is ApiResult.Failure ->

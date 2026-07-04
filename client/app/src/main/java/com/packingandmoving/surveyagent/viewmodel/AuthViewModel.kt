@@ -17,14 +17,17 @@ data class AuthUiState(
 )
 
 /**
- * Sign-in screen. Exchanges a Google ID token for the app's token pair via the backend.
- * Acquiring the Google ID token (and persisting the rotating refresh token) is wired in
- * the authentication phase; this ViewModel owns the request/loading/error state.
+ * Sign-in screen. The screen obtains a Google ID token via Credential Manager and hands it
+ * here; this ViewModel exchanges it for the app's token pair (persisted by the repository)
+ * and owns the loading/error/signed-in state.
  */
 class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+
+    /** Enter the loading state while the Google account picker is shown. */
+    fun startSignIn() = _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
     fun signIn(googleIdToken: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -37,6 +40,10 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
             }
         }
     }
+
+    /** Surface a failure from the Google credential step (cancel, no account, etc.). */
+    fun onSignInFailed(message: String) =
+        _uiState.update { it.copy(isLoading = false, errorMessage = message) }
 
     fun consumeError() = _uiState.update { it.copy(errorMessage = null) }
 }

@@ -54,8 +54,7 @@ fun SurveyDetailScreen(
     surveyId: String,
     onOpenCamera: (surveyId: String) -> Unit,
     onOpenProcessing: (surveyId: String) -> Unit,
-    onOpenReport: (surveyId: String) -> Unit,
-    onOpenSummary: (surveyId: String) -> Unit,
+    onOpenResults: (surveyId: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SurveyDetailViewModel = viewModel(factory = AppViewModelFactory),
@@ -116,8 +115,7 @@ fun SurveyDetailScreen(
                 },
                 onOpenCamera = { onOpenCamera(surveyId) },
                 onOpenProcessing = { onOpenProcessing(surveyId) },
-                onOpenReport = { onOpenReport(surveyId) },
-                onOpenSummary = { onOpenSummary(surveyId) },
+                onOpenResults = { onOpenResults(surveyId) },
                 modifier = Modifier.padding(innerPadding),
             )
         }
@@ -158,8 +156,7 @@ private fun DetailContent(
     onAction: (String) -> Unit,
     onOpenCamera: () -> Unit,
     onOpenProcessing: () -> Unit,
-    onOpenReport: () -> Unit,
-    onOpenSummary: () -> Unit,
+    onOpenResults: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -199,8 +196,7 @@ private fun DetailContent(
                     onClick = when (option) {
                         NavOption.Camera -> onOpenCamera
                         NavOption.Processing -> onOpenProcessing
-                        NavOption.Report -> onOpenReport
-                        NavOption.Summary -> onOpenSummary
+                        NavOption.Results -> onOpenResults
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(option.label) }
@@ -272,8 +268,7 @@ private fun RejectDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
 private enum class NavOption(val label: String) {
     Camera("Capture Media"),
     Processing("View Processing"),
-    Report("AI Report"),
-    Summary("Summary"),
+    Results("Survey Results"),
 }
 
 /** Which flow screens make sense to open for a given status. */
@@ -284,6 +279,6 @@ private fun navOptionsFor(status: SurveyStatus): List<NavOption> = when (status)
     SurveyStatus.AWAITING_CUSTOMER_APPROVAL,
     SurveyStatus.REVISION_REQUIRED,
     SurveyStatus.APPROVED,
-    SurveyStatus.COMPLETED -> listOf(NavOption.Report, NavOption.Summary)
+    SurveyStatus.COMPLETED -> listOf(NavOption.Results)
     else -> emptyList()
 }

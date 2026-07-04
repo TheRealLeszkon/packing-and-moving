@@ -39,14 +39,12 @@ data class Camera(val surveyId: String)
 @Serializable
 data class Processing(val surveyId: String)
 
+// Merged AI report + summary.
 @Serializable
-data class AiReport(val surveyId: String)
+data class SurveyResults(val surveyId: String)
 
 @Serializable
 data class ItemDetail(val surveyId: String, val itemId: String)
 
 @Serializable
 data class AddItem(val surveyId: String)
-
-@Serializable
-data class Summary(val surveyId: String)

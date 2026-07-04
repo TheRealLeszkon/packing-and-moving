@@ -12,7 +12,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
-import com.packingandmoving.surveyagent.ui.screens.AiReportScreen
 import com.packingandmoving.surveyagent.ui.screens.CameraScreen
 import com.packingandmoving.surveyagent.ui.screens.CreateSurveyScreen
 import com.packingandmoving.surveyagent.ui.screens.HomeScreen
@@ -22,8 +21,8 @@ import com.packingandmoving.surveyagent.ui.screens.PhotoReviewScreen
 import com.packingandmoving.surveyagent.ui.screens.ProcessingScreen
 import com.packingandmoving.surveyagent.ui.screens.SettingsScreen
 import com.packingandmoving.surveyagent.ui.screens.SignInScreen
-import com.packingandmoving.surveyagent.ui.screens.SummaryScreen
 import com.packingandmoving.surveyagent.ui.screens.SurveyDetailScreen
+import com.packingandmoving.surveyagent.ui.screens.SurveyResultsScreen
 import com.packingandmoving.surveyagent.ui.screens.SurveysScreen
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
 import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
@@ -91,8 +90,7 @@ fun SurveyNavHost(
                 surveyId = route.surveyId,
                 onOpenCamera = { id -> navController.navigate(Capture(id)) },
                 onOpenProcessing = { id -> navController.navigate(Processing(id)) },
-                onOpenReport = { id -> navController.navigate(AiReport(id)) },
-                onOpenSummary = { id -> navController.navigate(Summary(id)) },
+                onOpenResults = { id -> navController.navigate(SurveyResults(id)) },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -112,7 +110,7 @@ fun SurveyNavHost(
                     viewModel = captureViewModel,
                     onTakePhotos = { navController.navigate(Camera(surveyId)) },
                     onViewResults = { id ->
-                        navController.navigate(AiReport(id)) {
+                        navController.navigate(SurveyResults(id)) {
                             popUpTo(Capture(surveyId)) { inclusive = true }
                         }
                     },
@@ -138,23 +136,24 @@ fun SurveyNavHost(
             ProcessingScreen(
                 surveyId = route.surveyId,
                 onReadyForReview = { id ->
-                    navController.navigate(AiReport(id)) {
+                    navController.navigate(SurveyResults(id)) {
                         popUpTo(Processing(id)) { inclusive = true }
                     }
                 },
             )
         }
 
-        composable<AiReport> { entry ->
-            val route = entry.toRoute<AiReport>()
-            AiReportScreen(
+        // Merged AI report + summary (single destination after processing).
+        composable<SurveyResults> { entry ->
+            val route = entry.toRoute<SurveyResults>()
+            SurveyResultsScreen(
                 surveyId = route.surveyId,
-                onOpenItem = { surveyId, itemId ->
-                    navController.navigate(ItemDetail(surveyId, itemId))
-                },
+                onOpenItem = { surveyId, itemId -> navController.navigate(ItemDetail(surveyId, itemId)) },
                 onAddItem = { id -> navController.navigate(AddItem(id)) },
-                onOpenSummary = { id -> navController.navigate(Summary(id)) },
                 onBack = { navController.popBackStack() },
+                onSubmitted = {
+                    navController.navigate(Home) { popUpTo(Home) { inclusive = true } }
+                },
             )
         }
 
@@ -176,17 +175,5 @@ fun SurveyNavHost(
             )
         }
 
-        composable<Summary> { entry ->
-            val route = entry.toRoute<Summary>()
-            SummaryScreen(
-                surveyId = route.surveyId,
-                onComplete = {
-                    navController.navigate(Home) {
-                        popUpTo(Home) { inclusive = true }
-                    }
-                },
-                onBack = { navController.popBackStack() },
-            )
-        }
     }
 }

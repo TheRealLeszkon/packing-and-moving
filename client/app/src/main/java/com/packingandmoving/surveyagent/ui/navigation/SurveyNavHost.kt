@@ -64,16 +64,17 @@ fun SurveyNavHost(
 
         composable<RoleSelect> {
             RoleSelectScreen(
-                // Switch the backend role first (demo self-role switch); only persist the
-                // workspace choice + navigate on success. Returns an error message on failure.
+                // Best-effort backend role switch (demo self-role switch): try to flip the
+                // account role, but ALWAYS persist the workspace choice + enter the app so a
+                // server that lacks the endpoint (or has the flag off) can never lock the user
+                // out. If the switch failed, surface a non-blocking warning on the way in.
                 onRoleChosen = { role ->
-                    when (val result = AppRepositories.user.setRole(role.toUserRole())) {
-                        is ApiResult.Success -> {
-                            NetworkModule.sessionManager.setRole(role)
-                            navController.navigate(Home) { popUpTo(0) { inclusive = true } }
-                            null
-                        }
-                        is ApiResult.Failure -> result.error.message
+                    val result = AppRepositories.user.setRole(role.toUserRole())
+                    NetworkModule.sessionManager.setRole(role)
+                    navController.navigate(Home) { popUpTo(0) { inclusive = true } }
+                    (result as? ApiResult.Failure)?.let {
+                        "Signed in, but the backend role switch failed (${it.error.message}). " +
+                            "Surveyor actions may be blocked until the server is updated."
                     }
                 },
             )

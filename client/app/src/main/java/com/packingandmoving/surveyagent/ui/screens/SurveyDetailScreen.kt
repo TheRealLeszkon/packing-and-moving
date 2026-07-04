@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,13 +20,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -55,8 +61,19 @@ fun SurveyDetailScreen(
     viewModel: SurveyDetailViewModel = viewModel(factory = AppViewModelFactory),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showRejectDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(surveyId) { viewModel.load(surveyId) }
+
+    if (showRejectDialog) {
+        RejectDialog(
+            onConfirm = { reason ->
+                viewModel.reject(surveyId, reason)
+                showRejectDialog = false
+            },
+            onDismiss = { showRejectDialog = false },
+        )
+    }
 
     Scaffold(
         modifier = modifier,
@@ -92,7 +109,11 @@ fun SurveyDetailScreen(
                 availableActions = uiState.availableActions,
                 actionInProgress = uiState.isActionInProgress,
                 errorMessage = uiState.errorMessage,
-                onAction = { action -> runAction(action, surveyId, viewModel) },
+                onAction = { action ->
+                    // Reject needs a reason, so route it through a dialog; the rest fire directly.
+                    if (action == "reject") showRejectDialog = true
+                    else runAction(action, surveyId, viewModel)
+                },
                 onOpenCamera = { onOpenCamera(surveyId) },
                 onOpenProcessing = { onOpenProcessing(surveyId) },
                 onOpenReport = { onOpenReport(surveyId) },
@@ -103,8 +124,8 @@ fun SurveyDetailScreen(
     }
 }
 
-/** Lifecycle actions this surveyor client can perform (others are customer/board actions). */
-private val SUPPORTED_ACTIONS = setOf("start", "complete", "submit", "cancel")
+/** Lifecycle actions this client wires up (surveyor: start/complete/submit; customer: approve/reject; either: cancel). */
+private val SUPPORTED_ACTIONS = setOf("start", "complete", "submit", "cancel", "approve", "reject")
 
 private fun runAction(action: String, surveyId: String, viewModel: SurveyDetailViewModel) {
     when (action) {
@@ -112,6 +133,8 @@ private fun runAction(action: String, surveyId: String, viewModel: SurveyDetailV
         "complete" -> viewModel.complete(surveyId)
         "submit" -> viewModel.submit(surveyId)
         "cancel" -> viewModel.cancel(surveyId)
+        "approve" -> viewModel.approve(surveyId)
+        // "reject" is handled via a reason dialog in the screen, not here.
     }
 }
 
@@ -216,6 +239,33 @@ private fun LabeledLine(label: String, value: String) {
         text = "$label: $value",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** Collects the required reason for POST /surveys/{id}/reject. */
+@Composable
+private fun RejectDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var reason by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Request revision") },
+        text = {
+            OutlinedTextField(
+                value = reason,
+                onValueChange = { reason = it },
+                label = { Text("Reason") },
+                minLines = 2,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(reason.trim()) },
+                enabled = reason.isNotBlank(),
+            ) { Text("Send") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
     )
 }
 

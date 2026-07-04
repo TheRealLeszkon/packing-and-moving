@@ -59,6 +59,7 @@ class SurveyDetailViewModel(private val surveyRepository: SurveyRepository) : Vi
     fun start(surveyId: String) = runTransition(surveyId) { surveyRepository.start(surveyId) }
     fun complete(surveyId: String) = runTransition(surveyId) { surveyRepository.complete(surveyId) }
     fun submit(surveyId: String) = runTransition(surveyId) { surveyRepository.submit(surveyId) }
+    fun approve(surveyId: String) = runTransition(surveyId) { surveyRepository.approve(surveyId) }
     fun reject(surveyId: String, reason: String) =
         runTransition(surveyId) { surveyRepository.reject(surveyId, reason) }
     fun cancel(surveyId: String, reason: String? = null) =

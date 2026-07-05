@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     app_env: AppEnv = AppEnv.DEVELOPMENT
     log_level: str = "INFO"
     log_json: bool = True
+    # Demo-only: expose ``POST /users/me/role`` so one account can self-switch
+    # between customer and surveyor for testing/demos. Defaults on for local work;
+    # set ALLOW_SELF_ROLE_CHANGE=false in production to hide the endpoint.
+    allow_self_role_change: bool = True
 
     # ---- Database ----
     db_url: str

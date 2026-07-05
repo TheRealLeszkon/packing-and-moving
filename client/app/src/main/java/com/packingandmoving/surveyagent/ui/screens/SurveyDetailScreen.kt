@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.packingandmoving.surveyagent.model.Survey
 import com.packingandmoving.surveyagent.model.SurveyStatus
@@ -63,7 +64,9 @@ fun SurveyDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showRejectDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(surveyId) { viewModel.load(surveyId) }
+    // Refresh every time the screen (re)enters the foreground — first entry and returns from
+    // the camera/processing/results flow — so status and available actions are never stale.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load(surveyId, forceReload = true) }
 
     if (showRejectDialog) {
         RejectDialog(

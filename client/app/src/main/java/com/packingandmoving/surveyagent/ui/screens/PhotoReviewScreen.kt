@@ -59,9 +59,10 @@ import com.packingandmoving.surveyagent.ui.components.processingStageLabel
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 
 /**
- * Photo review hub (new). Shows every staged photo (camera + gallery), lets the user remove
- * or add more, and only uploads on Continue — which uploads the batch, completes the survey,
- * and then shows processing progress inline (photos stay visible) until results are ready.
+ * Photo review hub. Shows every staged photo (camera + gallery), lets the user remove or add
+ * more, and uploads in batches — Upload sends the staged media and returns to editing so more
+ * can be added; the explicit Send for Analysis then completes the survey and shows processing
+ * progress inline until results are ready.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,14 +134,16 @@ fun PhotoReviewScreen(
         bottomBar = {
             BottomActions(
                 phase = uiState.phase,
-                photoCount = uiState.media.size,
+                stagedCount = uiState.media.size,
+                uploadedCount = uiState.uploadedCount,
                 roomLocation = uiState.roomLocation,
                 processingStage = uiState.processingStage,
                 errorMessage = uiState.errorMessage,
                 enabled = uiState.phase == CapturePhase.Editing,
                 onRoomChange = viewModel::onRoomLocationChange,
                 onAddMore = { showAddSheet = true },
-                onContinue = { viewModel.uploadAndComplete(surveyId, context.contentResolver) },
+                onUpload = { viewModel.uploadBatch(surveyId, context.contentResolver) },
+                onSend = { viewModel.completeAndProcess(surveyId) },
                 onViewResults = { onViewResults(surveyId) },
             )
         },
@@ -257,14 +260,16 @@ private fun EmptyState(
 @Composable
 private fun BottomActions(
     phase: CapturePhase,
-    photoCount: Int,
+    stagedCount: Int,
+    uploadedCount: Int,
     roomLocation: String,
     processingStage: String?,
     errorMessage: String?,
     enabled: Boolean,
     onRoomChange: (String) -> Unit,
     onAddMore: () -> Unit,
-    onContinue: () -> Unit,
+    onUpload: () -> Unit,
+    onSend: () -> Unit,
     onViewResults: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp) {
@@ -274,7 +279,14 @@ private fun BottomActions(
             }
             when (phase) {
                 CapturePhase.Editing -> {
-                    if (photoCount > 0) {
+                    if (uploadedCount > 0) {
+                        Text(
+                            "$uploadedCount item(s) uploaded",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                    if (stagedCount > 0) {
                         OutlinedTextField(
                             value = roomLocation,
                             onValueChange = onRoomChange,
@@ -288,10 +300,19 @@ private fun BottomActions(
                                 Spacer(Modifier.size(4.dp))
                                 Text("Add More")
                             }
-                            Button(onClick = onContinue, enabled = enabled, modifier = Modifier.weight(1f)) {
-                                Text("Continue")
+                            Button(onClick = onUpload, enabled = enabled, modifier = Modifier.weight(1f)) {
+                                Text("Upload $stagedCount item(s)")
                             }
                         }
+                    }
+                    if (uploadedCount > 0) {
+                        // Sending completes the survey, so everything staged must be uploaded
+                        // (or removed) first — the backend rejects media once processing starts.
+                        Button(
+                            onClick = onSend,
+                            enabled = enabled && stagedCount == 0,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Send for Analysis") }
                     }
                 }
                 CapturePhase.Working -> ProcessingIndicator(processingStage)

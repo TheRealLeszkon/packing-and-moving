@@ -78,8 +78,8 @@ private enum class CameraMode { Photo, Video }
 
 /**
  * Camera capture. Live CameraX preview (FIT_CENTER so the full sensor frame shows — no
- * zoomed-in crop) with a Photo/Video mode toggle. Photos save a full-quality JPEG; videos
- * record to MP4. Both only *stage* their URI in the shared [CaptureViewModel] — upload
+ * zoomed-in crop) with a Photo/Video mode toggle. Photos save a JPEG (minimize-latency
+ * mode); videos record to MP4. Both only *stage* their URI in the shared [CaptureViewModel] — upload
  * happens later from the review screen, so the shutter returns instantly.
  */
 @Composable
@@ -137,7 +137,8 @@ private fun CameraContent(
         PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
     }
     val imageCapture = remember {
-        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+        // Minimize-latency: a snappy shutter matters more than peak JPEG quality here.
+        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
     }
     val videoCapture = remember {
         VideoCapture.withOutput(Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).build())
@@ -170,13 +171,25 @@ private fun CameraContent(
         camera?.cameraControl?.setZoomRatio(clamped)
     }
 
-    // Rebind whenever the mode changes (photo vs. video use case).
+    // Bind preview + photo + video use cases together once, so toggling Photo/Video doesn't
+    // tear down and rebind the camera (that rebind was a visible stall). Legacy devices that
+    // can't run all three at once fall back to rebinding the active use case per mode.
+    var perModeBinding by remember { mutableStateOf(false) }
     LaunchedEffect(mode) {
+        if (camera != null && !perModeBinding) return@LaunchedEffect
         val provider = context.getCameraProvider()
         val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
         provider.unbindAll()
-        val useCase = if (mode == CameraMode.Photo) imageCapture else videoCapture
-        camera = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, useCase)
+        camera = runCatching {
+            check(!perModeBinding)
+            provider.bindToLifecycle(
+                lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, videoCapture,
+            )
+        }.getOrElse {
+            perModeBinding = true
+            val useCase = if (mode == CameraMode.Photo) imageCapture else videoCapture
+            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, useCase)
+        }
         val zoomState = camera?.cameraInfo?.zoomState?.value
         minZoom = zoomState?.minZoomRatio ?: 1f
         maxZoom = zoomState?.maxZoomRatio ?: 1f

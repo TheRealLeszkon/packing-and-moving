@@ -51,8 +51,9 @@ fun SurveyApp(
     val currentDestination = backStackEntry?.destination
     val activeTab = currentDestination?.toBottomNavDestination()
 
-    // The Surveys tab is the surveyor request board; hide it for customers (and until the
-    // role is known) so they never see the job board (GET /users/me → role).
+    // Tabs are role-specific (GET /users/me → role): surveyors work the request board and
+    // have no use for the customer-facing Home/"start survey" screen, while customers never
+    // see the surveyor job board. Until the role resolves we show the customer set.
     val userRole by produceState<UserRole?>(initialValue = null, authState) {
         value = if (authState == AuthState.SignedIn) {
             (AppRepositories.user.getProfile() as? ApiResult.Success)?.data?.role
@@ -61,8 +62,21 @@ fun SurveyApp(
         }
     }
     val visibleTabs = remember(userRole) {
-        if (userRole == UserRole.SURVEYOR) BottomNavDestination.entries.toList()
-        else BottomNavDestination.entries.filterNot { it == BottomNavDestination.Surveys }
+        when (userRole) {
+            UserRole.SURVEYOR -> listOf(BottomNavDestination.Surveys, BottomNavDestination.Settings)
+            else -> listOf(BottomNavDestination.Home, BottomNavDestination.Settings)
+        }
+    }
+
+    // Startup can only default signed-in users to Home (role isn't known synchronously);
+    // once a surveyor's role resolves, send them to their Surveys landing and drop Home.
+    LaunchedEffect(userRole, activeTab) {
+        if (userRole == UserRole.SURVEYOR && activeTab == BottomNavDestination.Home) {
+            navController.navigate(Surveys) {
+                popUpTo(Home) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
     }
 
     Scaffold(

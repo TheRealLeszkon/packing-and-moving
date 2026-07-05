@@ -3,6 +3,7 @@ package com.packingandmoving.surveyagent.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.packingandmoving.surveyagent.model.Survey
 import com.packingandmoving.surveyagent.ui.components.AppCard
 import com.packingandmoving.surveyagent.ui.components.PrimaryActionButton
+import com.packingandmoving.surveyagent.ui.components.RefreshIconButton
 import com.packingandmoving.surveyagent.ui.components.StatusBadge
 import com.packingandmoving.surveyagent.ui.components.SurveyCard
 import com.packingandmoving.surveyagent.ui.theme.Spacing
@@ -80,10 +82,14 @@ fun HomeScreen(
         }
 
         item {
-            Text(
-                text = "Recent Surveys",
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Recent Surveys",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                RefreshIconButton(isRefreshing = uiState.isLoading, onClick = viewModel::refresh)
+            }
         }
 
         homeListContent(uiState, onOpenSurvey, onRetry = viewModel::refresh)

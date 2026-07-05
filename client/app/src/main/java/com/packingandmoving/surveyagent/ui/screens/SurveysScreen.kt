@@ -3,6 +3,7 @@ package com.packingandmoving.surveyagent.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.packingandmoving.surveyagent.ui.components.RefreshIconButton
 import com.packingandmoving.surveyagent.ui.components.SurveyCard
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
@@ -66,7 +68,12 @@ fun SurveysScreen(
                 }
             }
 
-            else -> boardContent(uiState, onAccept = viewModel::accept, onOpenSurvey = onOpenSurvey)
+            else -> boardContent(
+                uiState,
+                onAccept = viewModel::accept,
+                onOpenSurvey = onOpenSurvey,
+                onRefresh = viewModel::refresh,
+            )
         }
     }
 }
@@ -75,8 +82,14 @@ private fun LazyListScope.boardContent(
     uiState: SurveysUiState,
     onAccept: (String) -> Unit,
     onOpenSurvey: (String) -> Unit,
+    onRefresh: () -> Unit,
 ) {
-    item { SectionHeader("Available Requests") }
+    item {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            SectionHeader("Available Requests", modifier = Modifier.weight(1f))
+            RefreshIconButton(isRefreshing = uiState.isLoading, onClick = onRefresh)
+        }
+    }
     if (uiState.available.isEmpty()) {
         item { EmptyLine("No open requests right now.") }
     } else {
@@ -99,11 +112,11 @@ private fun LazyListScope.boardContent(
 }
 
 @Composable
-private fun SectionHeader(text: String) {
+private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = Spacing.Medium, bottom = Spacing.ExtraSmall),
+        modifier = modifier.padding(top = Spacing.Medium, bottom = Spacing.ExtraSmall),
     )
 }
 

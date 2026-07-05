@@ -30,9 +30,10 @@ fun SurveyBottomNavBar(
     selected: BottomNavDestination,
     onSelect: (BottomNavDestination) -> Unit,
     modifier: Modifier = Modifier,
+    destinations: List<BottomNavDestination> = BottomNavDestination.entries,
 ) {
     NavigationBar(modifier = modifier) {
-        BottomNavDestination.entries.forEach { destination ->
+        destinations.forEach { destination ->
             NavigationBarItem(
                 selected = destination == selected,
                 onClick = { onSelect(destination) },

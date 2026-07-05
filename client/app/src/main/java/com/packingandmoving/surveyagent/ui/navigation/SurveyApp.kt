@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination
@@ -15,6 +16,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.packingandmoving.surveyagent.api.NetworkModule
 import com.packingandmoving.surveyagent.auth.AuthState
+import com.packingandmoving.surveyagent.model.UserRole
+import com.packingandmoving.surveyagent.repository.ApiResult
+import com.packingandmoving.surveyagent.repository.AppRepositories
 import com.packingandmoving.surveyagent.ui.components.BottomNavDestination
 import com.packingandmoving.surveyagent.ui.components.SurveyBottomNavBar
 
@@ -47,12 +51,27 @@ fun SurveyApp(
     val currentDestination = backStackEntry?.destination
     val activeTab = currentDestination?.toBottomNavDestination()
 
+    // The Surveys tab is the surveyor request board; hide it for customers (and until the
+    // role is known) so they never see the job board (GET /users/me → role).
+    val userRole by produceState<UserRole?>(initialValue = null, authState) {
+        value = if (authState == AuthState.SignedIn) {
+            (AppRepositories.user.getProfile() as? ApiResult.Success)?.data?.role
+        } else {
+            null
+        }
+    }
+    val visibleTabs = remember(userRole) {
+        if (userRole == UserRole.SURVEYOR) BottomNavDestination.entries.toList()
+        else BottomNavDestination.entries.filterNot { it == BottomNavDestination.Surveys }
+    }
+
     Scaffold(
         bottomBar = {
-            if (activeTab != null) {
+            if (activeTab != null && activeTab in visibleTabs) {
                 SurveyBottomNavBar(
                     selected = activeTab,
                     onSelect = navController::navigateToTab,
+                    destinations = visibleTabs,
                 )
             }
         },

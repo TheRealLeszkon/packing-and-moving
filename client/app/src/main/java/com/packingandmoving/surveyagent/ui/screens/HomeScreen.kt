@@ -58,9 +58,9 @@ fun HomeScreen(
     ) {
         item {
             Column(Modifier.padding(top = Spacing.Large)) {
-                Text("Hello", style = MaterialTheme.typography.headlineLarge)
+                Text("Survey Dashboard", style = MaterialTheme.typography.headlineLarge)
                 Text(
-                    text = "Here's your survey activity.",
+                    text = "Start a new survey and track the status of your existing ones.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

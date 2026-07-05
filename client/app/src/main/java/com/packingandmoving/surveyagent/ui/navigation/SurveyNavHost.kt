@@ -12,7 +12,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
-import com.packingandmoving.surveyagent.api.NetworkModule
 import com.packingandmoving.surveyagent.ui.screens.CameraScreen
 import com.packingandmoving.surveyagent.ui.screens.CreateSurveyScreen
 import com.packingandmoving.surveyagent.ui.screens.HomeScreen
@@ -20,7 +19,6 @@ import com.packingandmoving.surveyagent.ui.screens.ItemDetailScreen
 import com.packingandmoving.surveyagent.ui.screens.ManualItemScreen
 import com.packingandmoving.surveyagent.ui.screens.PhotoReviewScreen
 import com.packingandmoving.surveyagent.ui.screens.ProcessingScreen
-import com.packingandmoving.surveyagent.ui.screens.RoleSelectScreen
 import com.packingandmoving.surveyagent.ui.screens.SettingsScreen
 import com.packingandmoving.surveyagent.ui.screens.SignInScreen
 import com.packingandmoving.surveyagent.ui.screens.SurveyDetailScreen
@@ -51,19 +49,7 @@ fun SurveyNavHost(
         composable<SignIn> {
             SignInScreen(
                 onSignedIn = {
-                    // Choose a workspace role on first sign-in; skip it if already chosen.
-                    val next: Any =
-                        if (NetworkModule.sessionManager.selectedRole.value == null) RoleSelect else Home
-                    navController.navigate(next) { popUpTo(SignIn) { inclusive = true } }
-                },
-            )
-        }
-
-        composable<RoleSelect> {
-            RoleSelectScreen(
-                onRoleChosen = { role ->
-                    NetworkModule.sessionManager.setRole(role)
-                    navController.navigate(Home) { popUpTo(0) { inclusive = true } }
+                    navController.navigate(Home) { popUpTo(SignIn) { inclusive = true } }
                 },
             )
         }
@@ -82,9 +68,7 @@ fun SurveyNavHost(
         }
 
         composable<Settings> {
-            SettingsScreen(
-                onSwitchRole = { navController.navigate(RoleSelect) },
-            )
+            SettingsScreen()
         }
 
         composable<CreateSurvey> {

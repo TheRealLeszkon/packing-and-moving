@@ -19,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.packingandmoving.surveyagent.api.NetworkModule
 import com.packingandmoving.surveyagent.model.User
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
@@ -31,12 +30,10 @@ import com.packingandmoving.surveyagent.viewmodel.SettingsViewModel
  */
 @Composable
 fun SettingsScreen(
-    onSwitchRole: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelFactory),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val role = NetworkModule.sessionManager.selectedRole.collectAsState().value
 
     Column(
         modifier = modifier
@@ -62,14 +59,6 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-        }
-
-        Spacer(Modifier.height(Spacing.Medium))
-        OutlinedButton(
-            onClick = onSwitchRole,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            Text("Using as ${role?.name ?: "—"} · Switch role")
         }
 
         Spacer(Modifier.weight(1f))

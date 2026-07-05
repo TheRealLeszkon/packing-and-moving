@@ -25,21 +25,12 @@ class SessionManager(private val tokenStore: TokenStore) : AuthTokenProvider {
     private val _authState = MutableStateFlow(AuthState.Unknown)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    private val _selectedRole = MutableStateFlow<AppRole?>(null)
-    val selectedRole: StateFlow<AppRole?> = _selectedRole.asStateFlow()
-
-    suspend fun setRole(role: AppRole) {
-        _selectedRole.value = role
-        tokenStore.saveRole(role.name)
-    }
-
     override fun currentAccessToken(): String? = accessToken.get()
 
     fun currentRefreshToken(): String? = refreshToken.get()
 
     /** Loads any persisted session into memory. Call once at startup before the UI renders. */
     suspend fun hydrate() {
-        _selectedRole.value = tokenStore.readRole()?.let { runCatching { AppRole.valueOf(it) }.getOrNull() }
         val stored = tokenStore.read()
         if (stored != null) {
             accessToken.set(stored.accessToken)
@@ -62,7 +53,6 @@ class SessionManager(private val tokenStore: TokenStore) : AuthTokenProvider {
     suspend fun clear() {
         accessToken.set(null)
         refreshToken.set(null)
-        _selectedRole.value = null
         tokenStore.clear()
         _authState.value = AuthState.SignedOut
     }

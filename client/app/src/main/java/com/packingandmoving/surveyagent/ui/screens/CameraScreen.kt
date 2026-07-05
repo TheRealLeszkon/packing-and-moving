@@ -18,6 +18,11 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.packingandmoving.surveyagent.camera.getCameraProvider
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
+import kotlinx.coroutines.delay
 import java.io.File
 
 private enum class CameraMode { Photo, Video }
@@ -146,6 +153,16 @@ private fun CameraContent(
     var zoomInitialized by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var isRecording by remember { mutableStateOf(false) }
+
+    // Elapsed-time ticker for the REC indicator; resets whenever a recording starts.
+    var recordSeconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isRecording) {
+        recordSeconds = 0
+        while (isRecording) {
+            delay(1_000)
+            recordSeconds++
+        }
+    }
 
     fun applyZoom(target: Float) {
         val clamped = target.coerceIn(minZoom, maxZoom)
@@ -246,6 +263,13 @@ private fun CameraContent(
             }
         }
 
+        if (isRecording) {
+            RecordingIndicator(
+                seconds = recordSeconds,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp),
+            )
+        }
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -294,6 +318,32 @@ private fun CameraContent(
                 }
             }
         }
+    }
+}
+
+/** Blinking red dot + elapsed MM:SS — the affirmative "recording now" signal. */
+@Composable
+private fun RecordingIndicator(seconds: Int, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "rec")
+    val dotAlpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+        label = "recDot",
+    )
+    Row(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(Modifier.size(10.dp).background(Color.Red.copy(alpha = dotAlpha), CircleShape))
+        Text(
+            text = "REC %02d:%02d".format(seconds / 60, seconds % 60),
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
 

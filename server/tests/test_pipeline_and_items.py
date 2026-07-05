@@ -152,6 +152,7 @@ async def test_complete_dispatches_finalize(
         sid = await create_survey(api, customer)
         await api.post(f"/survey-requests/{sid}/accept", headers=surveyor.headers)
         await api.post(f"/surveys/{sid}/start", headers=surveyor.headers)
+        await upload_image(api, surveyor, sid)  # complete requires media
         resp = await api.post(f"/surveys/{sid}/complete", headers=surveyor.headers)
         assert resp.status_code == 200
     finally:

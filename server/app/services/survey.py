@@ -188,6 +188,14 @@ class SurveyService:
         *,
         reason: str | None = None,
     ) -> Survey:
+        # Completing with nothing uploaded would sail straight through PROCESSING to
+        # READY_FOR_REVIEW with an empty inventory — almost always an accidental tap.
+        if action is SurveyAction.COMPLETE and not await self._surveys.count_media(survey.id):
+            raise ConflictError(
+                "No media uploaded. Capture at least one photo or video before "
+                "completing the survey."
+            )
+
         previous = survey.status
         target = resolve_transition(action, survey, user)
 

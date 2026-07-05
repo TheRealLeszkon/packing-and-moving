@@ -64,10 +64,30 @@ fun SurveyDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showRejectDialog by remember { mutableStateOf(false) }
+    var showCompleteConfirm by remember { mutableStateOf(false) }
 
     // Refresh every time the screen (re)enters the foreground — first entry and returns from
     // the camera/processing/results flow — so status and available actions are never stale.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load(surveyId, forceReload = true) }
+
+    // Confirm before completing: it ends capture and sends the survey to processing,
+    // and the button appears in the same spot Start Survey just occupied.
+    if (showCompleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCompleteConfirm = false },
+            title = { Text("Complete & process?") },
+            text = { Text("This ends media capture and sends the survey for AI analysis. Make sure all photos and videos are uploaded first.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCompleteConfirm = false
+                    viewModel.complete(surveyId)
+                }) { Text("Complete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCompleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     if (showRejectDialog) {
         RejectDialog(
@@ -114,9 +134,13 @@ fun SurveyDetailScreen(
                 actionInProgress = uiState.isActionInProgress,
                 errorMessage = uiState.errorMessage,
                 onAction = { action ->
-                    // Reject needs a reason, so route it through a dialog; the rest fire directly.
-                    if (action == "reject") showRejectDialog = true
-                    else runAction(action, surveyId, viewModel)
+                    // Reject needs a reason and complete is destructive-ish, so both go
+                    // through dialogs; the rest fire directly.
+                    when (action) {
+                        "reject" -> showRejectDialog = true
+                        "complete" -> showCompleteConfirm = true
+                        else -> runAction(action, surveyId, viewModel)
+                    }
                 },
                 onOpenCamera = { onOpenCamera(surveyId) },
                 onOpenProcessing = { onOpenProcessing(surveyId) },

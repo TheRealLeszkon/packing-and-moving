@@ -45,9 +45,12 @@ async def test_full_lifecycle_to_approval(
     status = (await api.get(f"/surveys/{sid}/status", headers=surveyor.headers)).json()["data"]
     assert status["status"] == "in_progress"
 
-    # drive the rest of the workflow via the state machine
-    await api.post(f"/surveys/{sid}/complete", headers=surveyor.headers)  # -> processing
-    # (no media, so it stays processing until a pipeline finalises; force via review path)
+    # Completing with no media is refused — an accidental tap right after Start
+    # would otherwise submit an empty survey straight to review.
+    resp = await api.post(f"/surveys/{sid}/complete", headers=surveyor.headers)
+    assert resp.status_code == 409
+    status = (await api.get(f"/surveys/{sid}/status", headers=surveyor.headers)).json()["data"]
+    assert status["status"] == "in_progress"
 
 
 async def test_only_customer_creates_surveys(api: AsyncClient, surveyor: Actor) -> None:

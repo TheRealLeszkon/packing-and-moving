@@ -34,6 +34,16 @@ class SurveyRepository(BaseRepository[Survey]):
             .all()
         )
 
+    async def count_media(self, survey_id: uuid.UUID) -> int:
+        """Total media rows for the survey (any type or processing status)."""
+        return (
+            await self.session.execute(
+                select(func.count())
+                .select_from(Media)
+                .where(Media.survey_id == survey_id)
+            )
+        ).scalar_one()
+
     async def count_unfinished_media(self, survey_id: uuid.UUID) -> int:
         """Media still pending/processing for the survey (drives the progress stage)."""
         return (

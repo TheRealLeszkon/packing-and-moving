@@ -105,6 +105,7 @@ fun SurveyNavHost(
                 onOpenCamera = { id -> navController.navigate(Capture(id)) },
                 onOpenProcessing = { id -> navController.navigate(Processing(id)) },
                 onOpenResults = { id -> navController.navigate(SurveyResults(id)) },
+                onOpenAddItem = { id -> navController.navigate(AddItem(id)) },
                 onBack = { navController.popBackStack() },
             )
         }

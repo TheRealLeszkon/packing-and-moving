@@ -57,6 +57,7 @@ fun SurveyDetailScreen(
     onOpenCamera: (surveyId: String) -> Unit,
     onOpenProcessing: (surveyId: String) -> Unit,
     onOpenResults: (surveyId: String) -> Unit,
+    onOpenAddItem: (surveyId: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SurveyDetailViewModel = viewModel(factory = AppViewModelFactory),
@@ -120,6 +121,7 @@ fun SurveyDetailScreen(
                 onOpenCamera = { onOpenCamera(surveyId) },
                 onOpenProcessing = { onOpenProcessing(surveyId) },
                 onOpenResults = { onOpenResults(surveyId) },
+                onOpenAddItem = { onOpenAddItem(surveyId) },
                 modifier = Modifier.padding(innerPadding),
             )
         }
@@ -161,6 +163,7 @@ private fun DetailContent(
     onOpenCamera: () -> Unit,
     onOpenProcessing: () -> Unit,
     onOpenResults: () -> Unit,
+    onOpenAddItem: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -206,6 +209,7 @@ private fun DetailContent(
                         NavOption.Camera -> onOpenCamera
                         NavOption.Processing -> onOpenProcessing
                         NavOption.Results -> onOpenResults
+                        NavOption.AddItem -> onOpenAddItem
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(option.label) }
@@ -280,15 +284,18 @@ private enum class NavOption(val label: String) {
     Camera("Capture Media"),
     Processing("View Processing"),
     Results("Survey Results"),
+    AddItem("Add Item Manually"),
 }
 
 /** Which flow screens make sense to open for a given status. */
 private fun navOptionsFor(status: SurveyStatus): List<NavOption> = when (status) {
     SurveyStatus.IN_PROGRESS -> listOf(NavOption.Camera)
     SurveyStatus.PROCESSING -> listOf(NavOption.Processing)
+    // Items are editable only in these two statuses (frontend-integration.md §10),
+    // so surface the add-item entry alongside the results/item list here.
     SurveyStatus.READY_FOR_REVIEW,
+    SurveyStatus.REVISION_REQUIRED -> listOf(NavOption.Results, NavOption.AddItem)
     SurveyStatus.AWAITING_CUSTOMER_APPROVAL,
-    SurveyStatus.REVISION_REQUIRED,
     SurveyStatus.APPROVED,
     SurveyStatus.COMPLETED -> listOf(NavOption.Results)
     else -> emptyList()

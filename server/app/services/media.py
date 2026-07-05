@@ -209,6 +209,12 @@ class MediaService:
                         f"Video is {duration:.0f}s; the maximum is "
                         f"{settings.max_video_duration_seconds}s."
                     )
+                if duration < settings.min_video_duration_seconds:
+                    raise ValidationError(
+                        f"Video is {duration:.1f}s; record at least "
+                        f"{settings.min_video_duration_seconds:.0f}s so frames can "
+                        "be extracted for analysis."
+                    )
                 duration_value: Decimal | None = Decimal(str(round(duration, 2)))
                 job_type = JobType.VIDEO_FRAME_EXTRACTION
             else:

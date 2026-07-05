@@ -137,6 +137,8 @@ class Settings(BaseSettings):
     max_image_size_mb: int = 25
     max_video_size_mb: int = 200
     max_video_duration_seconds: int = 30
+    # Below this the 1-fps frame extraction yields ~nothing analysable.
+    min_video_duration_seconds: float = 2.0
 
     @field_validator("google_oauth_client_ids", mode="before")
     @classmethod

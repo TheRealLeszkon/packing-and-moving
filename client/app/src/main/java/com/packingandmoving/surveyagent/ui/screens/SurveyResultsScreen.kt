@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -19,8 +21,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,16 +49,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
+import com.packingandmoving.surveyagent.model.AiFeedback
+import com.packingandmoving.surveyagent.model.Media
+import com.packingandmoving.surveyagent.model.MediaType
 import com.packingandmoving.surveyagent.model.SurveyItem
 import com.packingandmoving.surveyagent.model.SurveySummary
 import com.packingandmoving.surveyagent.ui.components.AppCard
+import com.packingandmoving.surveyagent.ui.components.MediaViewerDialog
 import com.packingandmoving.surveyagent.ui.components.processingStageLabel
+import com.packingandmoving.surveyagent.ui.theme.Dimens
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.AppViewModelFactory
 import com.packingandmoving.surveyagent.viewmodel.SurveyResultsViewModel
@@ -169,8 +182,25 @@ fun SurveyResultsScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.Medium),
             verticalArrangement = Arrangement.spacedBy(Spacing.Small),
         ) {
+            uiState.summary?.aiFeedback?.let { feedback ->
+                aiWarningText(feedback, uiState.items.isEmpty())?.let { warning ->
+                    item { AiFeedbackCard(warning, feedback.requestedImages) }
+                }
+            }
+
             uiState.summary?.let { summary ->
                 item { SummarySection(summary, uiState.items) }
+            }
+
+            if (uiState.media.isNotEmpty()) {
+                item {
+                    Text(
+                        "Captured Media",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(top = Spacing.Small),
+                    )
+                }
+                item { CapturedMediaStrip(uiState.media) }
             }
 
             item {
@@ -224,6 +254,87 @@ private fun ReanalyzeDialog(onChoose: (String) -> Unit, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = { onChoose("all") }) { Text("All photos") } },
         dismissButton = { TextButton(onClick = { onChoose("new_only") }) { Text("New photos only") } },
     )
+}
+
+/** What (if anything) to warn about from the latest AI run; null = no banner. */
+private fun aiWarningText(feedback: AiFeedback, noItems: Boolean): String? = when {
+    feedback.runStatus == "failed" ->
+        "AI analysis failed, so no items were generated. Add items manually or re-run the analysis."
+    feedback.needsMoreImages ->
+        "The AI couldn't build a full inventory from the uploaded media and needs more or better photos."
+    noItems && feedback.runStatus == "succeeded" ->
+        "The AI found no items in the uploaded media. Add more photos and re-run, or add items manually."
+    else -> null
+}
+
+@Composable
+private fun AiFeedbackCard(warning: String, requestedImages: List<String>) {
+    AppCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                warning,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+        if (requestedImages.isNotEmpty()) {
+            Spacer(Modifier.height(Spacing.ExtraSmall))
+            requestedImages.forEach { request ->
+                Text(
+                    "• $request",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+    }
+}
+
+/** The surveyor's uploaded photos/videos; tap a thumbnail to view it fullscreen. */
+@Composable
+private fun CapturedMediaStrip(media: List<Media>) {
+    var expanded by remember { mutableStateOf<Media?>(null) }
+    expanded?.let { selected ->
+        selected.url?.let { url ->
+            MediaViewerDialog(
+                model = url,
+                isVideo = selected.mediaType == MediaType.VIDEO,
+                onDismiss = { expanded = null },
+            )
+        }
+    }
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
+        items(media, key = { it.id }) { item ->
+            Box {
+                AsyncImage(
+                    model = item.url,
+                    contentDescription = if (item.mediaType == MediaType.VIDEO) "Survey video" else "Survey photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(Dimens.GalleryThumbnail)
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { expanded = item },
+                )
+                if (item.mediaType == MediaType.VIDEO) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

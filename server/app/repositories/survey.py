@@ -49,6 +49,17 @@ class SurveyRepository(BaseRepository[Survey]):
             )
         ).scalar_one()
 
+    async def latest_ai_run(self, survey_id: uuid.UUID) -> AIAnalysisRun | None:
+        """The survey's most recent AI analysis run (any status), if one exists."""
+        return (
+            await self.session.execute(
+                select(AIAnalysisRun)
+                .where(AIAnalysisRun.survey_id == survey_id)
+                .order_by(AIAnalysisRun.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
     async def has_pending_ai_run(self, survey_id: uuid.UUID) -> bool:
         """Whether an AI analysis run is queued/in-flight for the survey."""
         return (

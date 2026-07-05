@@ -15,6 +15,15 @@ data class SurveySummary(
     val needsSpecialHandlingItems: Int,
     val byCategory: List<CategoryBreakdown>,
     val byRoom: List<RoomBreakdown>,
+    val aiFeedback: AiFeedback? = null,
+)
+
+/** Outcome of the latest AI analysis run — explains an empty or thin inventory. */
+@Serializable
+data class AiFeedback(
+    val runStatus: String,
+    val needsMoreImages: Boolean,
+    val requestedImages: List<String>,
 )
 
 @Serializable

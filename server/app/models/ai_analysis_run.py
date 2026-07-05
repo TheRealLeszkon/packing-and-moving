@@ -45,6 +45,11 @@ class AIAnalysisRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     request_media_count: Mapped[int | None] = mapped_column(Integer)
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
+    # Model feedback surfaced to the app: whether it wants more/better images,
+    # and what it asked for. Duplicated out of raw_response so it is queryable.
+    needs_more_images: Mapped[bool | None] = mapped_column()
+    requested_images: Mapped[list[str] | None] = mapped_column(JSONB)
+
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     completion_tokens: Mapped[int | None] = mapped_column(Integer)
     total_tokens: Mapped[int | None] = mapped_column(Integer)

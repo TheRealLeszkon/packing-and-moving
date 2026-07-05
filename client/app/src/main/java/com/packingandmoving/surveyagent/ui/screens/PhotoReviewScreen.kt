@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.packingandmoving.surveyagent.viewmodel.CapturePhase
 import com.packingandmoving.surveyagent.viewmodel.CaptureViewModel
+import com.packingandmoving.surveyagent.viewmodel.StagedMedia
+import com.packingandmoving.surveyagent.ui.components.MediaViewerDialog
 import com.packingandmoving.surveyagent.ui.components.processingStageLabel
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 
@@ -78,6 +81,11 @@ fun PhotoReviewScreen(
     val context = LocalContext.current
     var showAddSheet by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
+    var expandedMedia by remember { mutableStateOf<StagedMedia?>(null) }
+
+    expandedMedia?.let { media ->
+        MediaViewerDialog(model = media.uri, isVideo = media.isVideo, onDismiss = { expandedMedia = null })
+    }
     val sheetState = rememberModalBottomSheetState()
 
     // Guard against losing staged media on an accidental back-press (item 9).
@@ -168,6 +176,7 @@ fun PhotoReviewScreen(
                         isVideo = item.isVideo,
                         removable = uiState.phase == CapturePhase.Editing,
                         onRemove = { viewModel.removeMedia(item.id) },
+                        onExpand = { expandedMedia = item },
                     )
                 }
             }
@@ -176,11 +185,18 @@ fun PhotoReviewScreen(
 }
 
 @Composable
-private fun MediaThumb(model: Any, isVideo: Boolean, removable: Boolean, onRemove: () -> Unit) {
+private fun MediaThumb(
+    model: Any,
+    isVideo: Boolean,
+    removable: Boolean,
+    onRemove: () -> Unit,
+    onExpand: () -> Unit,
+) {
     Box(
         Modifier
             .aspectRatio(1f)
-            .clip(MaterialTheme.shapes.medium),
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClickLabel = "Expand") { onExpand() },
     ) {
         AsyncImage(
             model = model,

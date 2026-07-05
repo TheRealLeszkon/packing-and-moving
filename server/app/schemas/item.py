@@ -159,6 +159,15 @@ class RoomBreakdown(BaseModel):
     quantity: int
 
 
+class AIFeedback(BaseModel):
+    """Outcome of the latest AI analysis run, so the app can explain an empty
+    or thin inventory (e.g. the model asked for more/better images)."""
+
+    run_status: str              # pending | succeeded | failed
+    needs_more_images: bool
+    requested_images: list[str]
+
+
 class SurveySummaryResponse(BaseModel):
     survey_id: uuid.UUID
     distinct_items: int          # number of item rows
@@ -170,3 +179,4 @@ class SurveySummaryResponse(BaseModel):
     needs_special_handling_items: int
     by_category: list[CategoryBreakdown]
     by_room: list[RoomBreakdown]
+    ai_feedback: AIFeedback | None = None  # None when no AI run has happened

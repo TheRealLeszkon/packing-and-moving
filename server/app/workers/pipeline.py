@@ -448,6 +448,8 @@ def _execute_analysis(
             run.model = result.model
             run.prompt_version = result.prompt_version
             run.raw_response = result.raw_response
+            run.needs_more_images = result.analysis.needs_more_images
+            run.requested_images = result.analysis.requested_images
             run.prompt_tokens = result.usage.prompt_tokens
             run.completion_tokens = result.usage.completion_tokens
             run.total_tokens = result.usage.total_tokens

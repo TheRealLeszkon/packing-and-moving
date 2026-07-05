@@ -1,6 +1,7 @@
 package com.packingandmoving.surveyagent.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -14,6 +15,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,9 +30,15 @@ import com.packingandmoving.surveyagent.ui.theme.Dimens
 import com.packingandmoving.surveyagent.ui.theme.Spacing
 import com.packingandmoving.surveyagent.viewmodel.StagedMedia
 
-/** Horizontal strip of staged (not-yet-uploaded) media, each with a remove badge. */
+/** Horizontal strip of staged (not-yet-uploaded) media, each with a remove badge.
+ *  Tap a thumbnail to expand it in a fullscreen viewer (photos zoom, videos play). */
 @Composable
 fun StagedMediaRow(media: List<StagedMedia>, onRemove: (String) -> Unit) {
+    var expanded by remember { mutableStateOf<StagedMedia?>(null) }
+    expanded?.let { item ->
+        MediaViewerDialog(model = item.uri, isVideo = item.isVideo, onDismiss = { expanded = null })
+    }
+
     LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
         items(media, key = { it.id }) { item ->
             Box {
@@ -35,7 +46,10 @@ fun StagedMediaRow(media: List<StagedMedia>, onRemove: (String) -> Unit) {
                     model = item.uri,
                     contentDescription = if (item.isVideo) "Staged video" else "Staged photo",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(Dimens.GalleryThumbnail).clip(MaterialTheme.shapes.medium),
+                    modifier = Modifier
+                        .size(Dimens.GalleryThumbnail)
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { expanded = item },
                 )
                 if (item.isVideo) {
                     Icon(

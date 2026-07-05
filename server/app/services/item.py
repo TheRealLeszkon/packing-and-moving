@@ -27,6 +27,7 @@ from app.models.user import User
 from app.repositories.item import SurveyItemRepository
 from app.repositories.survey import SurveyRepository
 from app.schemas.item import (
+    AIFeedback,
     CategoryBreakdown,
     ItemMergeRequest,
     ItemSplitRequest,
@@ -65,7 +66,17 @@ class SurveyItemService:
         if survey is None or not can_view_survey(survey, user):
             raise NotFoundError("Survey not found.")
         items = await self._items.list_for_survey(survey_id)
-        return _build_summary(survey_id, items)
+        run = await self._surveys.latest_ai_run(survey_id)
+        feedback = (
+            AIFeedback(
+                run_status=run.status.value,
+                needs_more_images=bool(run.needs_more_images),
+                requested_images=list(run.requested_images or []),
+            )
+            if run is not None
+            else None
+        )
+        return _build_summary(survey_id, items, feedback)
 
     # ---- mutations --------------------------------------------------------
     async def create(
@@ -208,7 +219,9 @@ class SurveyItemService:
 
 
 def _build_summary(
-    survey_id: uuid.UUID, items: Sequence[SurveyItem]
+    survey_id: uuid.UUID,
+    items: Sequence[SurveyItem],
+    ai_feedback: AIFeedback | None = None,
 ) -> SurveySummaryResponse:
     total_quantity = 0
     total_value = Decimal("0")
@@ -252,4 +265,5 @@ def _build_summary(
             RoomBreakdown(room_location=r, distinct_items=v[0], quantity=v[1])
             for r, v in by_room.items()
         ],
+        ai_feedback=ai_feedback,
     )

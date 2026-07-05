@@ -76,6 +76,9 @@ import java.io.File
 
 private enum class CameraMode { Photo, Video }
 
+/** Matches the backend's minimum video duration (min_video_duration_seconds). */
+private const val MIN_VIDEO_DURATION_MS = 2_000L
+
 /**
  * Camera capture. Live CameraX preview (FIT_CENTER so the full sensor frame shows — no
  * zoomed-in crop) with a Photo/Video mode toggle. Photos save a JPEG (minimize-latency
@@ -202,6 +205,7 @@ private fun CameraContent(
     }
 
     fun capturePhoto() {
+        captureError = null
         imageCapture.flashMode =
             if (flashEnabled) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
         val file = File(context.cacheDir, "capture_${System.currentTimeMillis()}.jpg")
@@ -223,6 +227,7 @@ private fun CameraContent(
             current.stop()
             return
         }
+        captureError = null
         val file = File(context.cacheDir, "video_${System.currentTimeMillis()}.mp4")
         val options = FileOutputOptions.Builder(file).build()
         // No audio → no RECORD_AUDIO permission needed.
@@ -233,8 +238,15 @@ private fun CameraContent(
                     is VideoRecordEvent.Finalize -> {
                         isRecording = false
                         recording = null
+                        val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000
                         if (event.hasError()) {
                             captureError = "Video failed (code ${event.error})."
+                        } else if (durationMs < MIN_VIDEO_DURATION_MS) {
+                            // Too short for the backend's 1-fps frame extraction — discard
+                            // now with a clear warning instead of failing at upload.
+                            file.delete()
+                            captureError =
+                                "Video too short — record for at least ${MIN_VIDEO_DURATION_MS / 1000} seconds."
                         } else {
                             onVideoCaptured(Uri.fromFile(file))
                         }

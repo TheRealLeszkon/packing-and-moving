@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import com.packingandmoving.surveyagent.ui.theme.Elevation
 import com.packingandmoving.surveyagent.ui.theme.Spacing
@@ -21,13 +22,14 @@ import com.packingandmoving.surveyagent.ui.theme.SurveyAgentTheme
 @Composable
 fun AppCard(
     modifier: Modifier = Modifier,
+    containerColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = containerColor ?: MaterialTheme.colorScheme.surfaceContainer,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = Elevation.Level1),
     ) {

@@ -95,6 +95,11 @@ async def test_summary(api: AsyncClient, customer: Actor, surveyor: Actor) -> No
     assert float(summary["total_value"]) >= 500
     assert summary["fragile_items"] >= 1
     assert len(summary["by_category"]) >= 1 and len(summary["by_room"]) >= 1
+    # Latest AI run outcome is surfaced so the app can explain an empty inventory.
+    feedback = summary["ai_feedback"]
+    assert feedback["run_status"] == "succeeded"
+    assert feedback["needs_more_images"] is False
+    assert feedback["requested_images"] == []
 
 
 async def test_item_edit_authorization(

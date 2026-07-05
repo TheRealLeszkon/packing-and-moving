@@ -2,11 +2,14 @@ package com.packingandmoving.surveyagent.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.packingandmoving.surveyagent.model.Media
+import com.packingandmoving.surveyagent.model.MediaType
 import com.packingandmoving.surveyagent.model.SurveyItem
 import com.packingandmoving.surveyagent.model.SurveyStatus
 import com.packingandmoving.surveyagent.model.SurveySummary
 import com.packingandmoving.surveyagent.repository.ApiResult
 import com.packingandmoving.surveyagent.repository.ItemRepository
+import com.packingandmoving.surveyagent.repository.MediaRepository
 import com.packingandmoving.surveyagent.repository.SurveyRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -20,6 +23,7 @@ data class SurveyResultsUiState(
     val isLoading: Boolean = false,
     val summary: SurveySummary? = null,
     val items: List<SurveyItem> = emptyList(),
+    val media: List<Media> = emptyList(),
     val query: String = "",
     val status: SurveyStatus? = null,
     val availableActions: List<String> = emptyList(),
@@ -50,6 +54,7 @@ data class SurveyResultsUiState(
 class SurveyResultsViewModel(
     private val surveyRepository: SurveyRepository,
     private val itemRepository: ItemRepository,
+    private val mediaRepository: MediaRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SurveyResultsUiState())
@@ -61,15 +66,22 @@ class SurveyResultsViewModel(
             val summaryDeferred = async { surveyRepository.summary(surveyId) }
             val itemsDeferred = async { itemRepository.listItems(surveyId) }
             val statusDeferred = async { surveyRepository.surveyStatus(surveyId) }
+            val mediaDeferred = async { mediaRepository.listMedia(surveyId, limit = 100) }
             val summary = summaryDeferred.await()
             val items = itemsDeferred.await()
             val status = statusDeferred.await()
+            val media = mediaDeferred.await()
+
+            // Only the surveyor's own captures — extracted frames are pipeline internals.
+            val capturedMedia = (media as? ApiResult.Success)?.data?.items
+                ?.filter { it.mediaType == MediaType.IMAGE || it.mediaType == MediaType.VIDEO }
 
             _uiState.update { state ->
                 state.copy(
                     isLoading = false,
                     summary = (summary as? ApiResult.Success)?.data ?: state.summary,
                     items = (items as? ApiResult.Success)?.data?.items ?: state.items,
+                    media = capturedMedia ?: state.media,
                     status = (status as? ApiResult.Success)?.data?.status ?: state.status,
                     availableActions = (status as? ApiResult.Success)?.data?.availableActions
                         ?: state.availableActions,
